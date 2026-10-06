@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Review Assistant — Dashboard</title>
+<title>Stamgæst — Dashboard</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -18,6 +18,7 @@
     --new: #f5b301;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -114,115 +115,307 @@
   .send-note { font-size: 11px; color: var(--muted); margin-top: 6px; }
   .error { color: var(--danger); font-size: 13px; margin: 10px 0; }
   .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 30px 0; }
+  .login-card {
+    max-width: 380px; margin: 12vh auto 0; background: var(--card);
+    border: 1px solid var(--border); border-radius: 12px; padding: 24px;
+  }
+  .login-card h1 { margin-bottom: 4px; }
+  .login-card .sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  .field-block { margin-bottom: 14px; }
+  .field-block label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .field-block input {
+    width: 100%; background: #10131a; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 10px 11px; font-size: 14px; font-family: inherit;
+  }
+  .btn-primary {
+    background: var(--accent); color: white; border: none; border-radius: 8px;
+    padding: 10px 16px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  .topbar h1 { margin: 0; }
+  .who { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .who strong { color: var(--text); }
+  .linkbtn {
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 6px 11px; font-size: 12px; cursor: pointer;
+  }
+  .linkbtn:hover { border-color: var(--accent); color: var(--accent); }
+  .setup .refresh { flex: 2; min-width: 240px; }
+  .setup .refresh button {
+    background: var(--accent); color: white; border: none; border-radius: 8px;
+    padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .setup .refresh button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #pwPanel form { display: grid; gap: 10px; max-width: 360px; margin-top: 10px; }
+  #pwPanel summary { cursor: pointer; font-size: 13px; }
+  .ok { color: var(--success); font-size: 13px; margin: 6px 0; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Feedback Fox</h1>
 
-  <div class="setup">
-    <div class="field">
-      <label>Virksomhedsnavn</label>
-      <input id="businessName" value="Dit shop navn" />
-    </div>
-    <div class="field">
-      <label>Branche</label>
-      <input id="businessType" value="café" />
-    </div>
-    <div class="field">
-      <label>Tone</label>
-      <select id="tone">
-        <option value="venligt og professionelt">Venligt og professionelt</option>
-        <option value="afslappet og personligt">Afslappet og personligt</option>
-        <option value="formelt">Formelt</option>
-      </select>
-    </div>
+  <!-- Vises når man ikke er logget ind -->
+  <div id="loginView" hidden>
+    <form class="login-card" id="loginForm" autocomplete="on">
+      <h1>Stamgæst</h1>
+      <p class="sub">Log ind for at se og besvare din cafés anmeldelser.</p>
+      <div class="field-block">
+        <label for="loginEmail">E-mail</label>
+        <input id="loginEmail" type="email" name="email" autocomplete="username" required />
+      </div>
+      <div class="field-block">
+        <label for="loginPassword">Adgangskode</label>
+        <input id="loginPassword" type="password" name="password" autocomplete="current-password" required />
+      </div>
+      <div id="loginError" class="error" role="alert"></div>
+      <button class="btn-primary" id="loginBtn" type="submit">Log ind</button>
+    </form>
   </div>
 
-  <div class="stats">
-    <div class="stat-card new"><div class="num" id="statNew">0</div><div class="label">Nye siden sidst</div></div>
-    <div class="stat-card"><div class="num" id="statTotal">0</div><div class="label">Anmeldelser i alt</div></div>
-    <div class="stat-card"><div class="num" id="statSent">0</div><div class="label">Besvarede</div></div>
-  </div>
-
-  <div class="panel" id="placesPanel">
-    <div class="row">
-      <input class="name-field" id="placesQuery" placeholder="Søg din virksomhed på Google (fx 'Café Nordvest København')" />
-      <button id="placesSearchBtn" type="button">Søg på Google</button>
+  <!-- Vises når man er logget ind -->
+  <div id="appView" hidden>
+    <div class="topbar">
+      <h1 id="cafeName">Stamgæst</h1>
+      <div class="who">
+        <span id="userEmail"></span>
+        <button class="linkbtn" id="logoutBtn" type="button">Log ud</button>
+      </div>
     </div>
-    <div id="placesResults"></div>
-    <div class="row" id="placesFetchRow" style="display:none; align-items:center; margin-top:8px;">
-      <button id="placesFetchBtn" type="button">Hent seneste anmeldelser</button>
-      <span class="send-note" style="margin:0;">⚠ Google udstiller maks. 5 anmeldelser pr. sted via denne API — ikke alle jeres.</span>
+
+    <details class="panel" id="pwPanel">
+      <summary>Skift adgangskode</summary>
+      <form id="pwForm" autocomplete="off">
+        <div class="field-block" style="margin:0;"><label for="pwCurrent">Nuværende adgangskode</label><input id="pwCurrent" type="password" autocomplete="current-password" required /></div>
+        <div class="field-block" style="margin:0;"><label for="pwNew">Ny adgangskode (mindst 10 tegn)</label><input id="pwNew" type="password" autocomplete="new-password" minlength="10" required /></div>
+        <div class="field-block" style="margin:0;"><label for="pwRepeat">Gentag ny adgangskode</label><input id="pwRepeat" type="password" autocomplete="new-password" required /></div>
+        <div id="pwMessage" class="error" role="alert"></div>
+        <button class="btn-primary" type="submit" style="width:auto;">Gem ny adgangskode</button>
+      </form>
+    </details>
+
+    <div class="setup">
+      <div class="field">
+        <label for="tone">Tone i svarene</label>
+        <select id="tone">
+          <option value="venligt og professionelt">Venligt og professionelt</option>
+          <option value="afslappet og personligt">Afslappet og personligt</option>
+          <option value="formelt">Formelt</option>
+        </select>
+      </div>
+      <div class="field refresh">
+        <button id="refreshBtn" type="button">Hent seneste anmeldelser</button>
+        <div class="send-note" id="lastFetched"></div>
+        <div class="send-note">⚠ Google udstiller maks. 5 anmeldelser pr. sted — ikke alle jeres.</div>
+      </div>
     </div>
+
+    <div class="stats">
+      <div class="stat-card new"><div class="num" id="statNew">0</div><div class="label">Nye siden sidst</div></div>
+      <div class="stat-card"><div class="num" id="statTotal">0</div><div class="label">Anmeldelser i alt</div></div>
+      <div class="stat-card"><div class="num" id="statSent">0</div><div class="label">Besvarede</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="unanswered">Nye / ubesvarede</button>
+      <button class="tab-btn" data-tab="answered">Besvarede</button>
+    </div>
+
+    <div class="toolbar">
+      <label id="selectAllWrap" style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); cursor:pointer;">
+        <input type="checkbox" id="selectAllCheck" />
+        Markér alle
+      </label>
+      <button class="chip" data-filter="all">Alle</button>
+      <button class="chip" data-filter="5">★★★★★</button>
+      <button class="chip" data-filter="4">★★★★☆</button>
+      <button class="chip" data-filter="low">≤3 stjerner</button>
+      <div class="spacer"></div>
+      <button class="secondary-action" id="bulkMarkAnswered" disabled>Markér som besvaret (0)</button>
+      <button class="primary-action" id="bulkGenerate" disabled>Generér svar for valgte (0)</button>
+    </div>
+
+    <div id="error" class="error" role="alert"></div>
+    <div id="reviewList"></div>
+    <div id="emptyState" class="empty" hidden></div>
   </div>
 
-  <div class="tabs">
-    <button class="tab-btn active" data-tab="unanswered">Nye / ubesvarede</button>
-    <button class="tab-btn" data-tab="answered">Besvarede</button>
-  </div>
-
-  <div class="toolbar">
-    <label id="selectAllWrap" style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); cursor:pointer;">
-      <input type="checkbox" id="selectAllCheck" />
-      Markér alle
-    </label>
-    <button class="chip" data-filter="all">Alle</button>
-    <button class="chip" data-filter="5">★★★★★</button>
-    <button class="chip" data-filter="4">★★★★☆</button>
-    <button class="chip" data-filter="low">≤3 stjerner</button>
-    <div class="spacer"></div>
-    <button class="secondary-action" id="bulkMarkAnswered" disabled>Markér som besvaret (0)</button>
-    <button class="primary-action" id="bulkGenerate" disabled>Generér svar for valgte (0)</button>
-  </div>
-
-  <div id="error" class="error"></div>
-  <div id="reviewList"></div>
-  <div id="emptyState" class="empty" style="display:none;"></div>
 </div>
 
 <script>
   let reviews = [];
-  // Sættes når man har valgt et sted. Alt der skal gemmes hænger på denne —
-  // uden den ved serveren ikke hvilken restaurant en anmeldelse hører til.
-  let currentRestaurantId = null;
   let currentFilter = "all";
   let currentTab = "unanswered";
 
-  const reviewList = document.getElementById("reviewList");
-  const emptyState = document.getElementById("emptyState");
-  const errorDiv = document.getElementById("error");
+  const $ = (id) => document.getElementById(id);
+  const reviewList = $("reviewList");
+  const emptyState = $("emptyState");
+  const errorDiv = $("error");
+
+  // Alt der kommer udefra (anmeldernes navne og tekster fra Google, Claudes
+  // udkast, stednavne) skal renses før det sættes ind som HTML. Ellers kan en
+  // anmeldelse med <img src=x onerror=...> køre kode i ejerens browser — og nu
+  // hvor anmeldelser gemmes i databasen, sker det hver gang siden åbnes.
+  function esc(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 
   function starString(n) {
     n = Number(n);
     return "★".repeat(n) + "☆".repeat(5 - n);
   }
 
-  // Serveren svarer altid med {error} ved fejl. Uden denne ville en fejlet
-  // gemning se ud som om den lykkedes, fordi fetch kun kaster ved netværksfejl
-  // — ikke ved 400 og 500.
-  async function postJson(url, body) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+  // ---- Kald til serveren ------------------------------------------------------
+
+  // Alle kald går gennem denne. Serveren svarer altid med {error} ved fejl. Uden
+  // tjekket ville en fejlet gemning se ud som om den lykkedes, fordi fetch kun
+  // kaster ved netværksfejl — ikke ved 400 og 500. Svarer serveren 401 ("ikke
+  // logget ind" eller "login udløbet"), sendes brugeren til loginsiden.
+  async function api(method, url, body) {
+    const options = { method, headers: {} };
+    if (body !== undefined) {
+      options.headers["Content-Type"] = "application/json";
+      options.body = JSON.stringify(body);
+    }
+    const res = await fetch(url, options);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Serverfejl (${res.status})`);
+    if (!res.ok) {
+      const err = new Error(data.error || `Serverfejl (${res.status})`);
+      err.status = res.status;
+      // Et forkert kodeord ved login er også en 401, men der skal vi blive på loginsiden.
+      if (res.status === 401 && url !== "/api/auth/login") showLogin();
+      throw err;
+    }
     return data;
   }
 
-  async function getJson(url) {
-    const res = await fetch(url);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Serverfejl (${res.status})`);
-    return data;
+  // ---- Login og log ud --------------------------------------------------------
+
+  // Viser loginsiden og fjerner alt fra skærmen, der tilhører den forrige bruger.
+  function showLogin(message) {
+    reviews = [];
+    reviewList.innerHTML = "";
+    errorDiv.textContent = "";
+    $("appView").hidden = true;
+    $("loginView").hidden = false;
+    $("loginError").textContent = message || "";
+    $("loginPassword").value = "";
   }
+
+  function showApp(me) {
+    $("loginView").hidden = true;
+    $("appView").hidden = false;
+    $("cafeName").textContent = me.businessName || "Stamgæst";
+    $("userEmail").textContent = me.email;
+  }
+
+  // Tjekker om man allerede er logget ind (cookien findes), og viser i så fald anmeldelserne.
+  async function boot() {
+    try {
+      const me = await api("GET", "/api/auth/me");
+      showApp(me);
+      await loadDashboard();
+    } catch (err) {
+      if (err.status !== 401) showLogin(err.message);
+    }
+  }
+
+  $("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("loginBtn");
+    btn.disabled = true;
+    $("loginError").textContent = "";
+    try {
+      await api("POST", "/api/auth/login", {
+        email: $("loginEmail").value.trim(),
+        password: $("loginPassword").value,
+      });
+      $("loginPassword").value = "";
+      await boot();
+    } catch (err) {
+      $("loginError").textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("logoutBtn").addEventListener("click", async () => {
+    try { await api("POST", "/api/auth/logout", {}); } catch (_) { /* vi logger ud på skærmen uanset */ }
+    showLogin();
+  });
+
+  $("pwForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const msg = $("pwMessage");
+    msg.className = "error";
+    msg.textContent = "";
+    if ($("pwNew").value !== $("pwRepeat").value) {
+      msg.textContent = "De to nye adgangskoder er ikke ens.";
+      return;
+    }
+    try {
+      await api("POST", "/api/auth/password", {
+        currentPassword: $("pwCurrent").value,
+        newPassword: $("pwNew").value,
+      });
+      $("pwForm").reset();
+      msg.className = "ok";
+      msg.textContent = "Adgangskoden er skiftet. Andre enheder er logget ud.";
+    } catch (err) {
+      msg.textContent = err.message;
+    }
+  });
+
+  // ---- Anmeldelser ------------------------------------------------------------
+
+  // Ét sted der tager et serversvar og gør det til appens tilstand — bruges både når
+  // siden åbnes og når man henter nye anmeldelser fra Google.
+  function applyDashboard(data) {
+    reviews = data.reviews;
+    $("cafeName").textContent = data.businessName || "Stamgæst";
+    if (data.defaultTone && [...$("tone").options].some(o => o.value === data.defaultTone)) {
+      $("tone").value = data.defaultTone;
+    }
+    $("lastFetched").textContent = data.reviewsFetchedAt
+      ? "Sidst hentet: " + new Date(data.reviewsFetchedAt).toLocaleString("da-DK")
+      : "Anmeldelser er ikke hentet endnu.";
+    render();
+  }
+
+  async function loadDashboard() {
+    applyDashboard(await api("GET", "/api/reviews"));
+  }
+
+  $("refreshBtn").addEventListener("click", async () => {
+    errorDiv.textContent = "";
+    const btn = $("refreshBtn");
+    btn.disabled = true;
+    btn.textContent = "Henter...";
+    try {
+      const before = reviews.length;
+      // Serveren ved selv hvilken café det gælder, ud fra dit login.
+      applyDashboard(await api("POST", "/api/reviews/refresh", {}));
+      if (reviews.length === before) {
+        errorDiv.textContent = "Ingen nye anmeldelser at hente (de var allerede gemt).";
+      }
+    } catch (err) {
+      errorDiv.textContent = "Fejl: " + err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Hent seneste anmeldelser";
+    }
+  });
 
   function updateStats() {
-    document.getElementById("statNew").textContent = reviews.filter(r => r.status === "new").length;
-    document.getElementById("statTotal").textContent = reviews.length;
-    document.getElementById("statSent").textContent = reviews.filter(r => r.status === "sent").length;
+    $("statNew").textContent = reviews.filter(r => r.status === "new").length;
+    $("statTotal").textContent = reviews.length;
+    $("statSent").textContent = reviews.filter(r => r.status === "sent").length;
   }
 
   function filteredReviews() {
@@ -238,10 +431,10 @@
     updateStats();
     const list = filteredReviews();
     reviewList.innerHTML = "";
-    emptyState.style.display = list.length === 0 ? "block" : "none";
+    emptyState.hidden = list.length !== 0;
     emptyState.textContent = currentTab === "answered"
       ? "Ingen besvarede anmeldelser endnu."
-      : "Ingen anmeldelser endnu — søg din virksomhed ovenfor for at hente anmeldelser fra Google.";
+      : "Ingen anmeldelser endnu — tryk på \"Hent seneste anmeldelser\" ovenfor.";
 
     list.forEach(r => {
       const row = document.createElement("div");
@@ -257,17 +450,17 @@
         if (r.draft) {
           draftSection = `
             <div class="draft-box">
-              <div class="review-text" style="font-style: normal;">${r.draft}</div>
+              <div class="review-text" style="font-style: normal;">${esc(r.draft)}</div>
             </div>
           `;
         }
       } else if (r.draft) {
         draftSection = `
           <div class="draft-box">
-            <textarea class="draftText" data-id="${r.id}">${r.draft}</textarea>
+            <textarea class="draftText" data-id="${esc(r.id)}">${esc(r.draft)}</textarea>
             <div class="draft-actions">
-              <button class="btn-send" data-id="${r.id}">Send til Google</button>
-              <button class="btn-regen" data-id="${r.id}">Generér igen</button>
+              <button class="btn-send" data-id="${esc(r.id)}">Send til Google</button>
+              <button class="btn-regen" data-id="${esc(r.id)}">Generér igen</button>
             </div>
             <div class="send-note">⚠ Prototype: "Send" kopierer svaret til udklipsholder for nu — automatisk afsendelse til Google kræver godkendt Business Profile API-adgang (se README).</div>
           </div>
@@ -276,14 +469,14 @@
 
       row.innerHTML = `
         <div class="review-head">
-          ${currentTab === "unanswered" ? `<input type="checkbox" class="rowCheck" data-id="${r.id}" />` : ""}
+          ${currentTab === "unanswered" ? `<input type="checkbox" class="rowCheck" data-id="${esc(r.id)}" />` : ""}
           <div class="review-info">
             <div class="top-line">
-              <span class="name">${r.reviewerName || "Anonym"}</span>
+              <span class="name">${esc(r.reviewerName) || "Anonym"}</span>
               <span class="stars">${starString(r.rating)}</span>
               ${badge}
             </div>
-            <div class="review-text">"${r.reviewText}"</div>
+            <div class="review-text">"${esc(r.reviewText)}"</div>
           </div>
         </div>
         ${draftSection}
@@ -297,19 +490,19 @@
   function updateBulkButtons() {
     const all = document.querySelectorAll(".rowCheck");
     const checked = document.querySelectorAll(".rowCheck:checked").length;
-    const generateBtn = document.getElementById("bulkGenerate");
-    const markBtn = document.getElementById("bulkMarkAnswered");
+    const generateBtn = $("bulkGenerate");
+    const markBtn = $("bulkMarkAnswered");
     generateBtn.textContent = `Generér svar for valgte (${checked})`;
     generateBtn.disabled = checked === 0;
     markBtn.textContent = `Markér som besvaret (${checked})`;
     markBtn.disabled = checked === 0;
 
-    const selectAllCheck = document.getElementById("selectAllCheck");
+    const selectAllCheck = $("selectAllCheck");
     selectAllCheck.checked = all.length > 0 && checked === all.length;
     selectAllCheck.indeterminate = checked > 0 && checked < all.length;
   }
 
-  document.getElementById("selectAllCheck").addEventListener("change", (e) => {
+  $("selectAllCheck").addEventListener("change", (e) => {
     document.querySelectorAll(".rowCheck").forEach(cb => cb.checked = e.target.checked);
     updateBulkButtons();
   });
@@ -338,7 +531,7 @@
 
       navigator.clipboard.writeText(finalText);
       try {
-        await postJson(`/api/reviews/${id}/send`, { finalText });
+        await api("POST", `/api/reviews/${id}/send`, { finalText });
         r.draft = finalText;
         r.status = "sent";
         render();
@@ -356,9 +549,9 @@
       currentTab = btn.dataset.tab;
       document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
-      document.getElementById("bulkGenerate").style.display = currentTab === "answered" ? "none" : "";
-      document.getElementById("bulkMarkAnswered").style.display = currentTab === "answered" ? "none" : "";
-      document.getElementById("selectAllWrap").style.display = currentTab === "answered" ? "none" : "flex";
+      $("bulkGenerate").style.display = currentTab === "answered" ? "none" : "";
+      $("bulkMarkAnswered").style.display = currentTab === "answered" ? "none" : "";
+      $("selectAllWrap").style.display = currentTab === "answered" ? "none" : "flex";
       render();
     });
   });
@@ -372,12 +565,12 @@
     });
   });
 
-  document.getElementById("bulkGenerate").addEventListener("click", () => {
+  $("bulkGenerate").addEventListener("click", () => {
     const ids = Array.from(document.querySelectorAll(".rowCheck:checked")).map(cb => cb.dataset.id);
     generateFor(ids);
   });
 
-  document.getElementById("bulkMarkAnswered").addEventListener("click", async () => {
+  $("bulkMarkAnswered").addEventListener("click", async () => {
     errorDiv.textContent = "";
     const ids = Array.from(document.querySelectorAll(".rowCheck:checked")).map(cb => cb.dataset.id);
 
@@ -385,7 +578,7 @@
       // Først når serveren har bekræftet hver enkelt, flyttes den i listen.
       // Ellers ville en anmeldelse se besvaret ud indtil man genindlæste siden.
       for (const id of ids) {
-        await postJson(`/api/reviews/${id}/answered`, {});
+        await api("POST", `/api/reviews/${id}/answered`, {});
         const r = reviews.find(x => x.id === id);
         if (r) r.status = "sent";
       }
@@ -398,30 +591,20 @@
 
   async function generateFor(ids) {
     errorDiv.textContent = "";
-    const businessName = document.getElementById("businessName").value.trim();
-    const businessType = document.getElementById("businessType").value.trim();
-    const tone = document.getElementById("tone").value;
-
     const toGenerate = reviews.filter(r => ids.includes(r.id));
     if (toGenerate.length === 0) return;
 
-    const btn = document.getElementById("bulkGenerate");
+    const btn = $("bulkGenerate");
     btn.disabled = true;
     btn.textContent = "Genererer...";
 
     try {
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          businessName, businessType, tone,
-          // Sendes med så serveren kan huske tonen til næste gang.
-          restaurantId: currentRestaurantId,
-          reviews: toGenerate.map(r => ({ id: r.id, reviewerName: r.reviewerName, rating: r.rating, reviewText: r.reviewText })),
-        }),
+      // Kun id'er og tone sendes. Anmeldelsens tekst og caféens navn læser serveren selv
+      // fra databasen, og hvilken café det gælder ved den ud fra dit login.
+      const data = await api("POST", "/api/generate", {
+        tone: $("tone").value,
+        reviews: toGenerate.map(r => ({ id: r.id })),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Ukendt fejl");
 
       data.results.forEach(result => {
         const r = reviews.find(x => x.id === result.id);
@@ -438,125 +621,7 @@
     }
   }
 
-  let selectedPlaceId = null;
-
-  async function searchPlaces() {
-    errorDiv.textContent = "";
-    const query = document.getElementById("placesQuery").value.trim();
-    if (!query) return;
-
-    const resultsDiv = document.getElementById("placesResults");
-    resultsDiv.innerHTML = "<div class=\"send-note\">Søger...</div>";
-    document.getElementById("placesFetchRow").style.display = "none";
-    selectedPlaceId = null;
-
-    try {
-      const res = await fetch(`/api/places/search?query=${encodeURIComponent(query)}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Ukendt fejl");
-
-      if (data.places.length === 0) {
-        resultsDiv.innerHTML = "<div class=\"send-note\">Ingen resultater — prøv et mere præcist navn eller tilføj by/adresse.</div>";
-        return;
-      }
-
-      resultsDiv.innerHTML = "";
-      data.places.forEach(place => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "chip";
-        btn.style.display = "block";
-        btn.style.width = "100%";
-        btn.style.textAlign = "left";
-        btn.style.marginTop = "6px";
-        btn.innerHTML = `<strong>${place.name}</strong><br><span style="color:var(--muted); font-size:11px;">${place.address}</span>`;
-        btn.addEventListener("click", () => {
-          selectedPlaceId = place.placeId;
-          document.querySelectorAll("#placesResults .chip").forEach(c => c.style.borderColor = "");
-          btn.style.borderColor = "var(--accent)";
-          document.getElementById("placesFetchRow").style.display = "flex";
-          if (place.name) document.getElementById("businessName").value = place.name;
-        });
-        resultsDiv.appendChild(btn);
-      });
-    } catch (err) {
-      errorDiv.textContent = "Fejl: " + err.message;
-      resultsDiv.innerHTML = "";
-    }
-  }
-
-  document.getElementById("placesSearchBtn").addEventListener("click", searchPlaces);
-  document.getElementById("placesQuery").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      searchPlaces();
-    }
-  });
-
-  document.getElementById("placesFetchBtn").addEventListener("click", async () => {
-    errorDiv.textContent = "";
-    if (!selectedPlaceId) return;
-
-    const btn = document.getElementById("placesFetchBtn");
-    btn.disabled = true;
-    btn.textContent = "Henter...";
-
-    try {
-      const businessType = document.getElementById("businessType").value.trim();
-      const before = reviews.length;
-
-      const data = await getJson(
-        `/api/places/reviews?placeId=${encodeURIComponent(selectedPlaceId)}` +
-        `&businessType=${encodeURIComponent(businessType)}`
-      );
-
-      // Serveren har allerede gemt og flettet — listen erstattes derfor helt
-      // frem for at vi selv fletter her. Dubletter håndteres af databasen, og
-      // svaret indeholder også ældre anmeldelser som Google ikke sender mere.
-      applyRestaurantData(data);
-
-      if (reviews.length === before) {
-        errorDiv.textContent = "Ingen nye anmeldelser at hente (de var allerede gemt).";
-      }
-    } catch (err) {
-      errorDiv.textContent = "Fejl: " + err.message;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Hent seneste anmeldelser";
-    }
-  });
-
-  // Ét sted der tager et serversvar og gør det til appens tilstand — bruges
-  // både når man henter fra Google og når siden indlæser gemte data.
-  function applyRestaurantData(data) {
-    currentRestaurantId = data.restaurantId;
-    reviews = data.reviews;
-
-    if (data.businessName) document.getElementById("businessName").value = data.businessName;
-    if (data.businessType) document.getElementById("businessType").value = data.businessType;
-    if (data.defaultTone) document.getElementById("tone").value = data.defaultTone;
-
-    render();
-  }
-
-  // Det der gør databasen synlig i appen: uden denne ville siden starte tom
-  // hver gang, uanset hvor meget der lå gemt.
-  async function loadSavedWork() {
-    try {
-      const { restaurants } = await getJson("/api/restaurants");
-      if (restaurants.length === 0) return;
-
-      // Listen kommer sorteret med senest opdaterede først, så det man sidst
-      // arbejdede på er det der åbner.
-      const data = await getJson(`/api/restaurants/${restaurants[0].id}/reviews`);
-      applyRestaurantData(data);
-    } catch (err) {
-      errorDiv.textContent = "Kunne ikke hente gemte anmeldelser: " + err.message;
-    }
-  }
-
-  render();
-  loadSavedWork();
+  boot();
 </script>
 </body>
 </html>
