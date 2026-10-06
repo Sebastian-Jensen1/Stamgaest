@@ -1,4 +1,4 @@
-# Review Assistant — dashboard-prototype
+# Stamgæst — dashboard-prototype
 
 Et dashboard hvor en butiksejer logger ind, henter sin virksomheds anmeldelser fra
 Google, vælger hvilke der skal have AI-genereret svar (fx alle 5-stjernede),
@@ -292,6 +292,20 @@ se afsnittet ovenfor.
 - **"Nye siden sidst"-tælleren** tæller nu de anmeldelser der reelt står som ubesvarede i databasen. Den mangler stadig at tage højde for *hvornår ejeren sidst var inde* — så "ny" betyder "ikke besvaret endnu", ikke "kommet til siden dit sidste besøg".
 - **Flere caféer pr. bruger** (fx en kæde): i dag hører en bruger til præcis én café. Flere brugere kan dele en café.
 - **Betaling**: Stripe-integration til abonnement, hvis I vil automatisere fakturering.
+
+## Hjemmesiden (stamgaest.com)
+
+Mappen `website/` er den offentlige forside med privatlivspolitik. Den er ren HTML og CSS uden
+build-trin og er adskilt fra appen (`public/`), som er selve login og dashboard.
+
+Se den lokalt (fra projektets rod):
+
+```
+python3 -m http.server 8000 --directory website
+```
+
+Åbn derefter http://localhost:8000. Hostes på Cloudflare Pages med `website` som rodmappe og
+ingen build-kommando.
 
 ## Filstruktur
 

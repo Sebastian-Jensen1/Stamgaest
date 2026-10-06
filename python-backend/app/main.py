@@ -67,7 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # /docs og /openapi.json viser hele API'et. Nyttigt under udvikling, men de er
     # slukket, medmindre ENABLE_DOCS=1 er sat i .env.
     docs = {} if settings.enable_docs else {"docs_url": None, "redoc_url": None, "openapi_url": None}
-    app = FastAPI(title="Review Assistant", lifespan=lifespan, **docs)
+    app = FastAPI(title="Stamgæst", lifespan=lifespan, **docs)
     app.state.settings = settings
     app.state.limits = Limits()  # tællere til at begrænse gætte-forsøg og udkast
 

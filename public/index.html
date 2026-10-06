@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Review Assistant — Dashboard</title>
+<title>Stamgæst — Dashboard</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -159,7 +159,7 @@
   <!-- Vises når man ikke er logget ind -->
   <div id="loginView" hidden>
     <form class="login-card" id="loginForm" autocomplete="on">
-      <h1>Feedback Fox</h1>
+      <h1>Stamgæst</h1>
       <p class="sub">Log ind for at se og besvare din cafés anmeldelser.</p>
       <div class="field-block">
         <label for="loginEmail">E-mail</label>
@@ -177,7 +177,7 @@
   <!-- Vises når man er logget ind -->
   <div id="appView" hidden>
     <div class="topbar">
-      <h1 id="cafeName">Feedback Fox</h1>
+      <h1 id="cafeName">Stamgæst</h1>
       <div class="who">
         <span id="userEmail"></span>
         <button class="linkbtn" id="logoutBtn" type="button">Log ud</button>
@@ -311,7 +311,7 @@
   function showApp(me) {
     $("loginView").hidden = true;
     $("appView").hidden = false;
-    $("cafeName").textContent = me.businessName || "Feedback Fox";
+    $("cafeName").textContent = me.businessName || "Stamgæst";
     $("userEmail").textContent = me.email;
   }
 
@@ -378,7 +378,7 @@
   // siden åbnes og når man henter nye anmeldelser fra Google.
   function applyDashboard(data) {
     reviews = data.reviews;
-    $("cafeName").textContent = data.businessName || "Feedback Fox";
+    $("cafeName").textContent = data.businessName || "Stamgæst";
     if (data.defaultTone && [...$("tone").options].some(o => o.value === data.defaultTone)) {
       $("tone").value = data.defaultTone;
     }
