@@ -73,8 +73,8 @@ core/      config, deps (CurrentUser), security-middleware, errors, rate_limit
 
 ## UI
 
-- Følg DESIGN.md for al UI: farver, typografi, spacing og komponenter.
-- Find ikke på nye farver, skrifttyper eller komponenter, der ikke står i DESIGN.md. Mangler noget, så spørg.
+- Følg DESIGN_xxx.md for al UI: farver, typografi, spacing og komponenter.
+- Find ikke på nye farver, skrifttyper eller komponenter, der ikke står i DESIGN_xxx.md-filen. Mangler noget, så spørg.
 
 ## Arbejdsgang
 

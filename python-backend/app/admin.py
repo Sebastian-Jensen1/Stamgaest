@@ -7,6 +7,7 @@ Kør fra python-backend/:
     uv run python -m app.admin list-customers
     uv run python -m app.admin reset-password --email ejer@gotland.dk
     uv run python -m app.admin deactivate --email ejer@gotland.dk
+    uv run python -m app.admin stats --days 30
 
 Der er bevidst ingen admin-side på nettet. Kun den der har adgang til serverens .env kan oprette
 kunder, så der ikke er en indgang at angribe udefra. Adgangskoder skrives aldrig på kommandolinjen
@@ -24,8 +25,8 @@ from email_validator import EmailNotValidError, validate_email
 
 from app.core.config import Settings, load_settings
 from app.db import pool
-from app.models import restaurants, reviews, sessions, users
-from app.services import auth_service, places_service
+from app.models import replies, restaurants, reviews, sessions, users
+from app.services import auth_service, edit_metrics, places_service
 
 
 class CliError(Exception):
@@ -113,6 +114,33 @@ async def set_active(email: str, active: bool) -> None:
         await sessions.delete_for_user(user["id"])
 
 
+async def edit_report(*, restaurant_id: UUID | None = None, days: int | None = None) -> dict:
+    """Regner ud hvor meget der rettes i Claudes udkast. Kun til os, aldrig vist til kunderne.
+
+    Returnerer det samlede billede, det samme opdelt pr. café og pr. model, og alle
+    svarene med deres rettelse (mest rettede først), så man kan læse eksemplerne.
+    """
+    if days is not None and days < 1:
+        raise CliError("--days skal være mindst 1.")
+    rows = await replies.list_sent_from_claude(restaurant_id=restaurant_id, days=days)
+    for row in rows:
+        row["edit_ratio"] = edit_metrics.edit_ratio(row["draft_text"], row["final_text"])
+
+    def grouped(key: str) -> dict[str, edit_metrics.EditSummary]:
+        groups: dict[str, list[float]] = {}
+        for row in rows:
+            groups.setdefault(str(row[key]), []).append(row["edit_ratio"])
+        return {name: edit_metrics.summarize(ratios) for name, ratios in groups.items()}
+
+    return {
+        "overall": edit_metrics.summarize([row["edit_ratio"] for row in rows]),
+        "by_restaurant": grouped("restaurant_name"),
+        "by_model": grouped("model"),
+        "drafts_per_reply": sum(row["draft_count"] for row in rows) / len(rows) if rows else 0.0,
+        "replies": sorted(rows, key=lambda row: row["edit_ratio"], reverse=True),
+    }
+
+
 # ---- Kommandolinjen ---------------------------------------------------------------
 
 
@@ -163,6 +191,52 @@ async def _list_restaurants() -> None:
         print(f"{r['id']}  {r['name']}  [{r['user_count']} bruger(e)]  place-id: {r['google_place_id'] or '-'}")
 
 
+def _pct(value: float) -> str:
+    """0.345 -> "35 %"."""
+    return f"{round(value * 100)} %"
+
+
+async def _stats(args: argparse.Namespace) -> None:
+    """Kommandoen `stats`."""
+    report = await edit_report(
+        restaurant_id=UUID(args.restaurant_id) if args.restaurant_id else None, days=args.days
+    )
+    scope = "alle caféer" if not args.restaurant_id else "én café"
+    period = f"de sidste {args.days} dage" if args.days else "hele perioden"
+    print(f"Rettelser i Claudes udkast ({scope}, {period})\n")
+
+    overall = report["overall"]
+    if overall is None:
+        print("Ingen sendte svar fra Claude endnu.")
+        return
+
+    def share(n: int) -> str:
+        return f"{n:>4}   ({_pct(n / overall.count)})"
+
+    print(f"  Sendte svar fra Claude:      {overall.count:>4}")
+    print(f"  Gennemsnitlig rettelse:      {_pct(overall.mean):>6}   (median {_pct(overall.median)})")
+    print(f"  Sendt uændret:               {share(overall.unchanged)}")
+    print(f"  Småretter (under 20 %):      {share(overall.small)}")
+    print(f"  Større rettelser (20-60 %):  {share(overall.large)}")
+    print(f"  Skrevet om (60 % eller mere):{share(overall.rewritten)}")
+    print(f"  Udkast pr. sendt svar:       {format(report['drafts_per_reply'], '.1f').replace('.', ','):>6}   (over 1 = der blev trykket \"Generér igen\")")
+
+    for title, groups in (("Pr. café", report["by_restaurant"]), ("Pr. model", report["by_model"])):
+        print(f"\n{title}")
+        for name, summary in sorted(groups.items(), key=lambda item: -item[1].count):
+            print(f"  {name[:34]:35} {summary.count:>4} svar   {_pct(summary.mean):>6} rettet")
+
+    examples = report["replies"][: args.examples]
+    if examples:
+        print(f"\nMest rettede ({len(examples)})")
+    for row in examples:
+        stars = f"{row['rating']}/5" if row["rating"] else "?/5"
+        print(f"\n  {_pct(row['edit_ratio'])} rettet · {row['restaurant_name']} · {stars} · tone: {row['tone'] or '-'}")
+        print(f"  Anmeldelse: {row['review_text'] or '(ingen tekst)'}")
+        print(f"  Udkast:     {row['draft_text']}")
+        print(f"  Sendt:      {row['final_text']}")
+
+
 def _parser() -> argparse.ArgumentParser:
     """Bygger kommandolinjens kommandoer og valgmuligheder."""
     parser = argparse.ArgumentParser(prog="python -m app.admin", description=__doc__.split("\n\n")[0])
@@ -186,6 +260,11 @@ def _parser() -> argparse.ArgumentParser:
     for name, text in (("deactivate", "slå en kunde fra"), ("activate", "slå en kunde til igen")):
         command = commands.add_parser(name, help=text)
         command.add_argument("--email", required=True)
+
+    stats = commands.add_parser("stats", help="hvor meget retter kunderne i Claudes udkast?")
+    stats.add_argument("--days", type=int, help="kun svar sendt de sidste N dage (fx for at sammenligne før/efter en ny prompt)")
+    stats.add_argument("--restaurant-id", help="kun én café (fra 'list-restaurants')")
+    stats.add_argument("--examples", type=int, default=3, help="hvor mange af de mest rettede svar der vises (standard 3)")
     return parser
 
 
@@ -210,6 +289,8 @@ async def _run(args: argparse.Namespace, settings: Settings) -> None:
         elif args.command in ("deactivate", "activate"):
             await set_active(args.email, args.command == "activate")
             print("Færdig.")
+        elif args.command == "stats":
+            await _stats(args)
     finally:
         await pool.close_pool()
 

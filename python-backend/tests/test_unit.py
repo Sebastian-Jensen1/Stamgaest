@@ -10,7 +10,7 @@ import pytest
 
 from app.core.security import build_csp, inline_script_hashes
 from app.db.pool import build_conninfo
-from app.services import claude_service, places_service
+from app.services import claude_service, edit_metrics, places_service
 from app.core.errors import UpstreamError
 from tests.conftest import PUBLIC_DIR
 
@@ -452,3 +452,43 @@ def test_requests_from_our_own_site_pass_the_origin_check(unit_client):
 
 def test_reading_data_is_never_blocked_by_the_origin_check(unit_client):
     assert unit_client.get("/api/reviews", headers={"Origin": "https://evil.example"}).status_code == 401
+
+
+# ---- måleren for rettelser i udkast -------------------------------------------
+
+
+def test_edit_ratio_is_zero_when_the_draft_is_sent_unchanged():
+    assert edit_metrics.edit_ratio("Tak for besøget!", "Tak for besøget!") == 0.0
+    # Ekstra mellemrum og linjeskift er ikke en rettelse.
+    assert edit_metrics.edit_ratio("Tak for  besøget!", "Tak for\nbesøget! ") == 0.0
+
+
+def test_edit_ratio_is_one_when_everything_is_rewritten():
+    assert edit_metrics.edit_ratio("Tak for besøget", "Vi ses snart igen") == 1.0
+
+
+def test_edit_ratio_counts_words_not_letters():
+    draft = "Tusind tak for de søde ord om vores kaffe og kage. Vi glæder os til at se dig igen."
+    one_word = draft.replace("Tusind", "Mange")
+    long_word = draft.replace("kage", "kanelsnegle")
+    assert 0 < edit_metrics.edit_ratio(draft, one_word) < 0.1
+    assert edit_metrics.edit_ratio(draft, one_word) == edit_metrics.edit_ratio(draft, long_word)
+
+
+def test_edit_ratio_handles_empty_texts():
+    assert edit_metrics.edit_ratio("", "") == 0.0
+    assert edit_metrics.edit_ratio("Tak!", "") == 1.0
+
+
+def test_summarize_sorts_edits_into_groups():
+    summary = edit_metrics.summarize([0.0, 0.0, 0.1, 0.3, 0.8])
+    assert (summary.count, summary.unchanged, summary.small, summary.large, summary.rewritten) == (5, 2, 1, 1, 1)
+    assert summary.mean == pytest.approx(0.24)
+    assert summary.median == 0.1
+    # Grænserne hører til den største gruppe.
+    edges = edit_metrics.summarize([edit_metrics.SMALL_EDIT, edit_metrics.REWRITE])
+    assert (edges.small, edges.large, edges.rewritten) == (0, 1, 1)
+
+
+def test_summarize_of_nothing_is_none():
+    assert edit_metrics.summarize([]) is None
