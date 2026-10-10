@@ -81,6 +81,7 @@ kommandolinjen, for de ville ende i terminalens historik.
 | `list-customers` / `list-restaurants` | Viser kunder / caféer (med id) |
 | `reset-password --email …` | Ny adgangskode, og kunden logges ud alle steder (glemt kode) |
 | `deactivate --email …` / `activate --email …` | Slår en kunde fra/til, og fra logger dem ud med det samme |
+| `stats [--days N] [--restaurant-id …]` | Hvor meget kunderne retter i Claudes udkast før de sender, og de mest rettede eksempler. Kun til os |
 
 ## Database (PostgreSQL på Neon)
 

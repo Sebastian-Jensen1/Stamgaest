@@ -75,6 +75,31 @@ async def mark_sent(review_id: UUID, restaurant_id: UUID, final_text: str) -> di
         return reply
 
 
+async def list_sent_from_claude(*, restaurant_id: UUID | None = None, days: int | None = None) -> list[dict]:
+    """Henter alle sendte svar hvor udkastet kom fra Claude, nyeste først. Kun til vores admin-værktøj.
+
+    Håndskrevne svar (model = NULL) er udeladt, for der er intet udkast at sammenligne med.
+    `draft_count` er hvor mange udkast Claude lavede til anmeldelsen ("Generér igen" giver flere).
+    """
+    return await fetch_all(
+        """
+        SELECT r.draft_text, r.final_text, r.model, r.tone, r.sent_at,
+               rv.rating, rv.review_text,
+               rest.id AS restaurant_id, rest.name AS restaurant_name,
+               (SELECT count(*) FROM replies x
+                 WHERE x.review_id = r.review_id AND x.model IS NOT NULL) AS draft_count
+          FROM replies r
+          JOIN reviews rv ON rv.id = r.review_id
+          JOIN restaurants rest ON rest.id = rv.restaurant_id
+         WHERE r.status = 'sent' AND r.model IS NOT NULL AND r.final_text IS NOT NULL
+           AND (%s::uuid IS NULL OR rest.id = %s::uuid)
+           AND (%s::int IS NULL OR r.sent_at >= now() - make_interval(days => %s::int))
+         ORDER BY r.sent_at DESC
+        """,
+        (restaurant_id, restaurant_id, days, days),
+    )
+
+
 async def list_by_review(review_id: UUID) -> list[dict]:
     """Henter alle udkast og svar til én anmeldelse, nyeste først."""
     return await fetch_all(
