@@ -20,6 +20,9 @@ load_dotenv(BACKEND_DIR / ".env")
 # Modellen der skriver udkastene. Kan ændres med CLAUDE_MODEL i .env.
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
 
+# Afsender indtil vi har et bekræftet domæne hos Resend (kan kun sende til din egen mail).
+DEFAULT_MAIL_FROM = "Stamgæst <onboarding@resend.dev>"
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -38,6 +41,13 @@ class Settings:
     # Skal login-cookien kun sendes over HTTPS? Skal være True når siden ligger på et
     # rigtigt domæne. Lokalt (http://localhost) skal den være False, ellers virker login ikke.
     cookie_secure: bool
+    # Mails (nulstilling af adgangskode). Mangler nøglen, sendes der ingen mails.
+    resend_api_key: str | None = field(default=None, repr=False)
+    # Afsenderen, fx "Stamgæst <noreply@mail.stamgaest.com>". Adressen skal høre til et domæne
+    # der er bekræftet hos Resend. Resends testadresse virker kun til din egen mail.
+    mail_from: str = DEFAULT_MAIL_FROM
+    # Adressen siden ligger på. Bruges til linket i mails, uden skråstreg til sidst.
+    app_base_url: str = "http://localhost:3000"
 
 
 def _clean(value: str | None) -> str | None:
@@ -60,8 +70,9 @@ def _port(raw: str | None) -> int:
 def load_settings() -> Settings:
     """Læser miljøet og returnerer en færdig Settings."""
     hosts = os.getenv("ALLOWED_HOSTS") or "localhost,127.0.0.1"
+    port = _port(_clean(os.getenv("PORT")))
     return Settings(
-        port=_port(_clean(os.getenv("PORT"))),
+        port=port,
         database_url=_clean(os.getenv("DATABASE_URL")),
         anthropic_api_key=_clean(os.getenv("ANTHROPIC_API_KEY")),
         google_places_api_key=_clean(os.getenv("GOOGLE_PLACES_API_KEY")),
@@ -70,4 +81,7 @@ def load_settings() -> Settings:
         enable_docs=os.getenv("ENABLE_DOCS") == "1",
         public_dir=REPO_DIR / "public",
         cookie_secure=os.getenv("COOKIE_SECURE") == "1",
+        resend_api_key=_clean(os.getenv("RESEND_API_KEY")),
+        mail_from=_clean(os.getenv("MAIL_FROM")) or DEFAULT_MAIL_FROM,
+        app_base_url=(_clean(os.getenv("APP_BASE_URL")) or f"http://localhost:{port}").rstrip("/"),
     )

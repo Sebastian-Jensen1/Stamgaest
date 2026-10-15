@@ -85,10 +85,19 @@ class Limits:
     # Forkerte logins: højst 5 pr. e-mail og 20 pr. IP-adresse på 15 minutter.
     login_email: RateLimiter = field(default_factory=lambda: RateLimiter(5, 15 * 60))
     login_ip: RateLimiter = field(default_factory=lambda: RateLimiter(20, 15 * 60))
+    # "Glemt adgangskode": højst 3 mails pr. e-mail og 10 pr. IP-adresse i timen. Tæller alle
+    # forsøg, også på e-mails der ikke findes, så grænsen ikke afslører hvem der er kunde, og så
+    # ingen kan bruge os til at fylde en andens indbakke.
+    forgot_email: RateLimiter = field(default_factory=lambda: RateLimiter(3, 60 * 60))
+    forgot_ip: RateLimiter = field(default_factory=lambda: RateLimiter(10, 60 * 60))
+    # Forkerte forsøg på at bruge et nulstillingslink: højst 20 pr. IP-adresse på 15 minutter.
+    reset_ip: RateLimiter = field(default_factory=lambda: RateLimiter(20, 15 * 60))
     # Udkast fra Claude: højst 100 pr. bruger i timen (hvert udkast koster penge).
     generate: RateLimiter = field(default_factory=lambda: RateLimiter(100, 60 * 60))
 
     def reset_all(self) -> None:
         """Nulstiller alle tællere. Bruges kun af testene."""
-        for limiter in (self.login_email, self.login_ip, self.generate):
+        for limiter in (
+            self.login_email, self.login_ip, self.forgot_email, self.forgot_ip, self.reset_ip, self.generate
+        ):
             limiter.reset_all()

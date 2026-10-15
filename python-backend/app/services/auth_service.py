@@ -17,6 +17,8 @@ from app.models import users
 
 SESSION_COOKIE = "session"
 SESSION_LIFETIME = timedelta(days=7)
+# Hvor længe et link til at vælge ny adgangskode virker. Kort, fordi en mail kan ligge i en indbakke.
+RESET_TOKEN_LIFETIME = timedelta(hours=1)
 
 MIN_PASSWORD_LENGTH = 10
 MAX_PASSWORD_LENGTH = 128  # loft, så ingen kan sende en gigantisk "adgangskode" for at spilde CPU
@@ -59,6 +61,11 @@ def generate_password() -> str:
 
 def new_session_token() -> str:
     """Laver en tilfældig nøgle til en ny session. Den ligger kun i brugerens cookie."""
+    return secrets.token_urlsafe(32)
+
+
+def new_reset_token() -> str:
+    """Laver en tilfældig nøgle til et nulstillingslink. Den står kun i mailen."""
     return secrets.token_urlsafe(32)
 
 

@@ -31,6 +31,19 @@ class ChangePasswordRequest(PasswordModel):
     new_password: str = Field(min_length=1, max_length=256)
 
 
+class ForgotPasswordRequest(CamelModel):
+    """Det browseren sender for at få et link til at vælge ny adgangskode."""
+
+    email: str = Field(min_length=3, max_length=254)
+
+
+class ResetPasswordRequest(PasswordModel):
+    """Det browseren sender for at vælge ny adgangskode med nøglen fra mailen."""
+
+    token: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=1, max_length=256)
+
+
 class MeResponse(CamelModel):
     """Hvem er logget ind, og hvilken café de hører til."""
 

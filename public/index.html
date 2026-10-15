@@ -171,6 +171,41 @@
       </div>
       <div id="loginError" class="error" role="alert"></div>
       <button class="btn-primary" id="loginBtn" type="submit">Log ind</button>
+      <p class="sub" style="margin:14px 0 0;"><button class="linkbtn" id="forgotLink" type="button">Glemt adgangskode?</button></p>
+    </form>
+  </div>
+
+  <!-- Vises når man har glemt sin adgangskode -->
+  <div id="forgotView" hidden>
+    <form class="login-card" id="forgotForm">
+      <h1>Glemt adgangskode</h1>
+      <p class="sub">Skriv din e-mail, så sender vi et link til at vælge en ny.</p>
+      <div class="field-block">
+        <label for="forgotEmail">E-mail</label>
+        <input id="forgotEmail" type="email" name="email" autocomplete="username" required />
+      </div>
+      <div id="forgotMessage" class="error" role="alert"></div>
+      <button class="btn-primary" id="forgotBtn" type="submit">Send link</button>
+      <p class="sub" style="margin:14px 0 0;"><button class="linkbtn" id="forgotBack" type="button">Tilbage til log ind</button></p>
+    </form>
+  </div>
+
+  <!-- Vises når man har klikket på linket i mailen -->
+  <div id="resetView" hidden>
+    <form class="login-card" id="resetForm">
+      <h1>Vælg ny adgangskode</h1>
+      <p class="sub">Vælg en ny adgangskode på mindst 10 tegn.</p>
+      <div class="field-block">
+        <label for="resetNew">Ny adgangskode</label>
+        <input id="resetNew" type="password" autocomplete="new-password" minlength="10" required />
+      </div>
+      <div class="field-block">
+        <label for="resetRepeat">Gentag ny adgangskode</label>
+        <input id="resetRepeat" type="password" autocomplete="new-password" required />
+      </div>
+      <div id="resetMessage" class="error" role="alert"></div>
+      <button class="btn-primary" id="resetBtn" type="submit">Gem ny adgangskode</button>
+      <p class="sub" style="margin:14px 0 0;"><button class="linkbtn" id="resetBack" type="button">Tilbage til log ind</button></p>
     </form>
   </div>
 
@@ -303,20 +338,47 @@
     reviewList.innerHTML = "";
     errorDiv.textContent = "";
     $("appView").hidden = true;
+    $("forgotView").hidden = true;
+    $("resetView").hidden = true;
     $("loginView").hidden = false;
+    $("loginError").className = "error";
     $("loginError").textContent = message || "";
     $("loginPassword").value = "";
   }
 
   function showApp(me) {
     $("loginView").hidden = true;
+    $("forgotView").hidden = true;
+    $("resetView").hidden = true;
     $("appView").hidden = false;
     $("cafeName").textContent = me.businessName || "Stamgæst";
     $("userEmail").textContent = me.email;
   }
 
+  // Nøglen fra mailen står efter # i adressen (#nulstil=...). Den sendes aldrig til serveren
+  // af browseren, så den står ikke i nogen log. Vi gemmer den i hukommelsen og fjerner den fra
+  // adresselinjen med det samme.
+  let resetToken = null;
+
+  function showReset(token) {
+    resetToken = token;
+    history.replaceState(null, "", location.pathname + location.search);
+    $("appView").hidden = true;
+    $("loginView").hidden = true;
+    $("forgotView").hidden = true;
+    $("resetView").hidden = false;
+    $("resetMessage").textContent = "";
+    $("resetNew").value = "";
+    $("resetRepeat").value = "";
+  }
+
   // Tjekker om man allerede er logget ind (cookien findes), og viser i så fald anmeldelserne.
   async function boot() {
+    const fromMail = location.hash.match(/^#nulstil=([A-Za-z0-9_-]+)$/);
+    if (fromMail) {
+      showReset(fromMail[1]);
+      return;
+    }
     try {
       const me = await api("GET", "/api/auth/me");
       showApp(me);
@@ -330,6 +392,7 @@
     e.preventDefault();
     const btn = $("loginBtn");
     btn.disabled = true;
+    $("loginError").className = "error";
     $("loginError").textContent = "";
     try {
       await api("POST", "/api/auth/login", {
@@ -340,6 +403,60 @@
       await boot();
     } catch (err) {
       $("loginError").textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("forgotLink").addEventListener("click", () => {
+    $("loginView").hidden = true;
+    $("forgotView").hidden = false;
+    $("forgotMessage").className = "error";
+    $("forgotMessage").textContent = "";
+    $("forgotEmail").value = $("loginEmail").value.trim();
+  });
+
+  $("forgotBack").addEventListener("click", () => showLogin());
+  $("resetBack").addEventListener("click", () => showLogin());
+
+  $("forgotForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("forgotBtn");
+    const msg = $("forgotMessage");
+    btn.disabled = true;
+    msg.className = "error";
+    msg.textContent = "";
+    try {
+      await api("POST", "/api/auth/forgot-password", { email: $("forgotEmail").value.trim() });
+      // Samme tekst uanset om e-mailen findes, ligesom serveren.
+      msg.className = "ok";
+      msg.textContent = "Hvis e-mailen er oprettet, er der sendt et link. Tjek din indbakke (og spam).";
+    } catch (err) {
+      msg.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("resetForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("resetBtn");
+    const msg = $("resetMessage");
+    msg.className = "error";
+    msg.textContent = "";
+    if ($("resetNew").value !== $("resetRepeat").value) {
+      msg.textContent = "De to adgangskoder er ikke ens.";
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await api("POST", "/api/auth/reset-password", { token: resetToken, newPassword: $("resetNew").value });
+      resetToken = null;
+      showLogin();
+      $("loginError").className = "ok";
+      $("loginError").textContent = "Din nye adgangskode er gemt. Log ind med den.";
+    } catch (err) {
+      msg.textContent = err.message;
     } finally {
       btn.disabled = false;
     }
