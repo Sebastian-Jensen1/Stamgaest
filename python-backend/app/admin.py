@@ -4,6 +4,8 @@ Kør fra python-backend/:
 
     uv run python -m app.admin search "Café Gotland København"
     uv run python -m app.admin create-customer --email ejer@gotland.dk --place-id ChIJ...
+    uv run python -m app.admin invite --email ejer@gotland.dk
+    uv run python -m app.admin revoke-invite --email ejer@gotland.dk
     uv run python -m app.admin list-customers
     uv run python -m app.admin reset-password --email ejer@gotland.dk
     uv run python -m app.admin deactivate --email ejer@gotland.dk
@@ -11,12 +13,14 @@ Kør fra python-backend/:
 
 Der er bevidst ingen admin-side på nettet. Kun den der har adgang til serverens .env kan oprette
 kunder, så der ikke er en indgang at angribe udefra. Adgangskoder skrives aldrig på kommandolinjen
-(de ville ende i terminalens historik), men laves tilfældigt og vises én gang.
+(de ville ende i terminalens historik). Nye kunder får en invitation på mail og vælger selv deres
+adgangskode, så vi aldrig ser den.
 """
 
 import argparse
 import asyncio
 import sys
+from datetime import datetime, timezone
 from uuid import UUID
 
 import httpx
@@ -25,8 +29,8 @@ from email_validator import EmailNotValidError, validate_email
 
 from app.core.config import Settings, load_settings
 from app.db import pool
-from app.models import replies, restaurants, reviews, sessions, users
-from app.services import auth_service, edit_metrics, places_service
+from app.models import password_tokens, replies, restaurants, reviews, sessions, users
+from app.services import auth_service, edit_metrics, email_service, places_service
 
 
 class CliError(Exception):
@@ -34,6 +38,19 @@ class CliError(Exception):
 
 
 # ---- Selve arbejdet. Kaldes både af kommandoerne nedenfor og af testene. ----------
+
+
+def clean_email(email: str) -> str:
+    """Tjekker en e-mail og gør den ens (små bogstaver). Fejler med en tydelig tekst hvis den er ugyldig."""
+    try:
+        return validate_email(email, check_deliverability=False).normalized.lower()
+    except EmailNotValidError as exc:
+        raise CliError(f"Ugyldig e-mail: {exc}") from None
+
+
+def email_is_confirmed(expected: str, typed: str) -> bool:
+    """Er den indtastede e-mail den samme som den vi skal sende til? (Store/små bogstaver er ligegyldige.)"""
+    return typed.strip().lower() == expected.strip().lower()
 
 
 async def create_customer(
@@ -44,8 +61,12 @@ async def create_customer(
     business_type: str | None = None,
     http: httpx.AsyncClient | None = None,
     api_key: str | None = None,
+    invite_pending: bool = False,
 ) -> tuple[dict, dict, str]:
     """Opretter en kunde og kobler dem til en café. Returnerer (bruger, café, adgangskode).
+
+    Med `invite_pending` er kunden inviteret og vælger selv sin adgangskode via et link. Den
+    adgangskode der returneres, må så ikke bruges til noget: den er tilfældig og vises ikke.
 
     Caféen angives på ÉN af to måder: `restaurant_id` (den findes allerede i databasen) eller
     `place_id` (Googles id, så hentes stedet og dets anmeldelser og gemmes med det samme).
@@ -53,10 +74,7 @@ async def create_customer(
     if (restaurant_id is None) == (place_id is None):
         raise CliError("Angiv præcis én af --restaurant-id og --place-id.")
 
-    try:
-        clean_email = validate_email(email, check_deliverability=False).normalized.lower()
-    except EmailNotValidError as exc:
-        raise CliError(f"Ugyldig e-mail: {exc}") from None
+    email = clean_email(email)
 
     if place_id is not None:
         if not places_service.is_valid_place_id(place_id):
@@ -84,13 +102,67 @@ async def create_customer(
     password = auth_service.generate_password()
     try:
         user = await users.create(
-            email=clean_email,
+            email=email,
             password_hash=await auth_service.hash_password(password),
             restaurant_id=restaurant["id"],
+            invite_pending=invite_pending,
         )
     except psycopg.errors.UniqueViolation:
-        raise CliError(f"Der findes allerede en bruger med e-mailen {clean_email}.") from None
+        raise CliError(f"Der findes allerede en bruger med e-mailen {email}.") from None
     return user, restaurant, password
+
+
+async def send_invitation(*, email: str, http: httpx.AsyncClient, settings: Settings) -> dict:
+    """Sender (eller gensender) velkomstmailen til en kunde der ikke har valgt adgangskode endnu.
+
+    En ny invitation gør den forrige ubrugelig. Returnerer brugeren.
+    """
+    user = await users.find_by_email(auth_service.normalize_email(email))
+    if user is None:
+        raise CliError(f"Der findes ingen bruger med e-mailen {email}.")
+    if not user["is_active"]:
+        raise CliError("Kunden er slået fra. Slå dem til igen med 'activate' først.")
+    if not user["invite_pending"]:
+        raise CliError(
+            "Kunden har allerede valgt en adgangskode. De kan selv bruge 'Glemt adgangskode?' på "
+            "loginsiden, eller du kan bruge 'reset-password'."
+        )
+    restaurant = await restaurants.find_by_id(user["restaurant_id"])
+
+    token = auth_service.new_reset_token()
+    await password_tokens.create(
+        token_hash=auth_service.hash_token(token),
+        user_id=user["id"],
+        expires_at=datetime.now(timezone.utc) + auth_service.INVITE_LIFETIME,
+    )
+    sent = await email_service.send_invitation(
+        http,
+        settings,
+        to=user["email"],
+        token=token,
+        business_name=restaurant["name"] if restaurant else "din café",
+        days=auth_service.INVITE_LIFETIME.days,
+    )
+    if not sent:
+        await password_tokens.delete_for_user(user["id"])  # linket nåede aldrig frem, så det bliver ikke liggende
+        raise CliError(
+            "Mailen kunne ikke sendes. Tjek RESEND_API_KEY og at afsenderdomænet er bekræftet hos Resend "
+            "(se serverens log). Prøv igen med 'invite'."
+        )
+    return user
+
+
+async def revoke_invite(email: str) -> None:
+    """Trækker en invitation tilbage, så linket i mailen ikke virker mere.
+
+    Kunden kan ikke logge ind og ikke bruge "Glemt adgangskode?", før vi sender en ny invitation.
+    """
+    user = await users.find_by_email(auth_service.normalize_email(email))
+    if user is None:
+        raise CliError(f"Der findes ingen bruger med e-mailen {email}.")
+    if not user["invite_pending"]:
+        raise CliError("Kunden har allerede valgt en adgangskode, så der er ingen invitation at trække tilbage.")
+    await password_tokens.delete_for_user(user["id"])
 
 
 async def reset_password(email: str) -> str:
@@ -100,6 +172,8 @@ async def reset_password(email: str) -> str:
         raise CliError(f"Der findes ingen bruger med e-mailen {email}.")
     password = auth_service.generate_password()
     await users.update_password(user["id"], await auth_service.hash_password(password))
+    await users.set_invite_pending(user["id"], False)  # kunden har nu en adgangskode
+    await password_tokens.delete_for_user(user["id"])  # et gammelt link må ikke overskrive den
     await sessions.delete_for_user(user["id"])
     return password
 
@@ -157,21 +231,69 @@ async def _search(settings: Settings, query: str) -> None:
         print(f"{place.name}\n   {place.address}\n   place-id: {place.place_id}\n")
 
 
+def _confirm_email_interactively(email: str) -> None:
+    """Beder om at få e-mailen skrevet igen, så en tastefejl ikke sender invitationen til en fremmed."""
+    print(f"Invitationen sendes til:  {email}")
+    try:
+        typed = input("Skriv e-mailadressen igen for at bekræfte: ")
+    except EOFError:
+        raise CliError("Kan ikke bekræfte e-mailen uden en terminal. Brug --yes, hvis du er sikker.") from None
+    if not email_is_confirmed(email, typed):
+        raise CliError("E-mailadresserne er ikke ens. Der er ikke oprettet noget.")
+
+
 async def _create_customer(settings: Settings, args: argparse.Namespace) -> None:
-    """Kommandoen `create-customer`."""
+    """Kommandoen `create-customer`: opretter kunden og sender en invitation (eller viser en adgangskode)."""
+    email = clean_email(args.email)
+    # Bekræftelsen sker FØR noget oprettes eller hentes fra Google. Den springes over, når der ikke
+    # sendes en mail (--show-password), eller når man bevidst har sagt --yes.
+    if not args.show_password and not args.yes:
+        _confirm_email_interactively(email)
+
     async with httpx.AsyncClient(timeout=15.0) as http:
         user, restaurant, password = await create_customer(
-            email=args.email,
+            email=email,
             restaurant_id=UUID(args.restaurant_id) if args.restaurant_id else None,
             place_id=args.place_id,
             business_type=args.business_type,
             http=http,
             api_key=settings.google_places_api_key,
+            invite_pending=not args.show_password,
         )
-    print(f"Kunde oprettet for {restaurant['name']}.")
-    print(f"   E-mail:      {user['email']}")
-    print(f"   Adgangskode: {password}")
-    print("\nAdgangskoden vises KUN denne ene gang. Giv den til kunden, og bed dem skifte den ved første login.")
+        print(f"Kunde oprettet for {restaurant['name']}.")
+        print(f"   E-mail:      {user['email']}")
+        if args.show_password:
+            print(f"   Adgangskode: {password}")
+            print("\nAdgangskoden vises KUN denne ene gang. Giv den til kunden, og bed dem skifte den ved første login.")
+            return
+        _warn_if_localhost(settings)
+        await send_invitation(email=user["email"], http=http, settings=settings)
+    days = auth_service.INVITE_LIFETIME.days
+    print(f"\nInvitation sendt. Linket virker i {days} dage. Send en ny med 'invite', eller træk den tilbage med 'revoke-invite'.")
+
+
+def _warn_if_localhost(settings: Settings) -> None:
+    """Advarer hvis linket i mailen peger på din egen computer, for så virker det ikke for kunden."""
+    if settings.app_base_url.startswith("http://localhost") or settings.app_base_url.startswith("http://127."):
+        print(f"ADVARSEL: linket i mailen peger på {settings.app_base_url}, som kun virker på din egen computer.")
+        print("          Sæt APP_BASE_URL i .env til den adresse kunden skal bruge.\n")
+
+
+async def _invite(settings: Settings, args: argparse.Namespace) -> None:
+    """Kommandoen `invite`: sender en (ny) velkomstmail."""
+    _warn_if_localhost(settings)
+    async with httpx.AsyncClient(timeout=15.0) as http:
+        user = await send_invitation(email=args.email, http=http, settings=settings)
+    print(f"Invitation sendt til {user['email']}. Tidligere links er ugyldige. Det nye virker i {auth_service.INVITE_LIFETIME.days} dage.")
+
+
+def customer_status(row: dict) -> str:
+    """Giver kundens status som tekst: aktiv, slået fra, eller hvor langt invitationen er."""
+    if not row["is_active"]:
+        return "SLÅET FRA"
+    if row["invite_pending"]:
+        return "afventer invitation" if row["has_valid_link"] else "INVITATION UDLØBET"
+    return "aktiv"
 
 
 async def _list_customers() -> None:
@@ -180,9 +302,8 @@ async def _list_customers() -> None:
     if not rows:
         print("Ingen kunder endnu.")
     for r in rows:
-        status = "aktiv" if r["is_active"] else "SLÅET FRA"
         last = r["last_login_at"].strftime("%Y-%m-%d %H:%M") if r["last_login_at"] else "aldrig"
-        print(f"{r['email']:35} {status:10} {r['restaurant_name']}  (sidst logget ind: {last})")
+        print(f"{r['email']:35} {customer_status(r):20} {r['restaurant_name']}  (sidst logget ind: {last})")
 
 
 async def _list_restaurants() -> None:
@@ -250,6 +371,18 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument("--place-id", help="Googles id for caféen (fra 'search')")
     create.add_argument("--restaurant-id", help="id på en café der allerede findes (fra 'list-restaurants')")
     create.add_argument("--business-type", help='fx "café" (bruges i prompten til Claude)')
+    create.add_argument("--yes", action="store_true", help="spring bekræftelsen af e-mailen over")
+    create.add_argument(
+        "--show-password",
+        action="store_true",
+        help="send ingen invitation, men vis en adgangskode én gang (til kunder der ikke kan få mail)",
+    )
+
+    invite = commands.add_parser("invite", help="send en (ny) velkomstmail til en kunde der ikke har valgt adgangskode")
+    invite.add_argument("--email", required=True)
+
+    revoke = commands.add_parser("revoke-invite", help="træk en invitation tilbage, så linket ikke virker mere")
+    revoke.add_argument("--email", required=True)
 
     commands.add_parser("list-customers", help="vis alle kunder")
     commands.add_parser("list-restaurants", help="vis alle caféer med id")
@@ -280,6 +413,11 @@ async def _run(args: argparse.Namespace, settings: Settings) -> None:
     try:
         if args.command == "create-customer":
             await _create_customer(settings, args)
+        elif args.command == "invite":
+            await _invite(settings, args)
+        elif args.command == "revoke-invite":
+            await revoke_invite(args.email)
+            print("Invitationen er trukket tilbage. Send en ny med 'invite', hvis kunden alligevel skal have adgang.")
         elif args.command == "list-customers":
             await _list_customers()
         elif args.command == "list-restaurants":

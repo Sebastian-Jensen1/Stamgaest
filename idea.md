@@ -20,7 +20,7 @@ Sæt `[x]` når en idé er lavet.
   - Svar altid ens, uanset om mailen findes (ingen user enumeration). Rate-limit endpointet
     (`core/rate_limit.py` findes allerede).
   - Mailservicen genbruges af alle punkter herunder.
-- [ ] **#2 Invitation via mail**
+- [x] **#2 Invitation via mail**
   - I stedet for at admin-CLI'en viser en kode én gang, sender systemet kunden et
     "sæt din adgangskode"-link. Samme mekanisme som #1, så næsten gratis bagefter.
   - Bemærk: #1 + #2 løser kun adgangskoden. Kunden oprettes stadig med `create-customer`.

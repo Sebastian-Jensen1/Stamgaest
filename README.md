@@ -70,6 +70,7 @@ ny adgangskode, og bagefter er kunden logget ud alle steder.
 - **Højst 3 mails pr. e-mail og 10 pr. IP-adresse i timen**, også for e-mails der ikke findes.
 - Et nyt link gør de gamle ubrugelige. Slåede-fra brugere får ingen mail.
 - `reset-password` i kommandolinjeværktøjet virker stadig, hvis kunden ikke kan få mail.
+- Er kunden netop inviteret og har ikke valgt en adgangskode endnu, sendes der ingen mail herfra (se nedenfor).
 
 Mails sendes via [Resend](https://resend.com) og kræver tre ting i `.env`:
 
@@ -95,16 +96,24 @@ uv run python -m app.admin search "Café Gotland København"
 uv run python -m app.admin create-customer --email ejer@gotland.dk --place-id ChIJ... --business-type café
 ```
 
-Værktøjet laver en tilfældig adgangskode og viser den **én gang**. Giv den til kunden, som
-kan skifte den under "Skift adgangskode" på siden. Adgangskoder skrives aldrig på
-kommandolinjen, for de ville ende i terminalens historik.
+Værktøjet beder dig skrive kundens e-mail igen (så en tastefejl ikke sender en invitation til en
+fremmed) og sender så en **velkomstmail** med et link, der virker i 7 dage og kun én gang. Kunden
+vælger selv sin adgangskode, så vi aldrig ser den. Adgangskoder skrives aldrig på kommandolinjen,
+for de ville ende i terminalens historik.
+
+Indtil kunden har valgt en adgangskode, er kontoen "inviteret": ingen kender adgangskoden, og
+"Glemt adgangskode?" sender intet. Kun vi kan sende en ny invitation eller trække den tilbage.
+Ellers kunne en fejlindtastet e-mail overtage en café ad omvejen, efter at invitationen er trukket
+tilbage. Kan en kunde ikke få mail, kan `--show-password` vise en adgangskode én gang i stedet.
 
 | Kommando | Hvad den gør |
 | --- | --- |
 | `search "navn by"` | Finder en café hos Google og viser dens `place-id` |
-| `create-customer --email … --place-id …` | Opretter café og kunde ud fra et Google-sted |
+| `create-customer --email … --place-id …` | Opretter café og kunde ud fra et Google-sted og sender en invitation. `--yes` springer bekræftelsen af e-mailen over, `--show-password` viser en adgangskode i stedet for at sende mail |
 | `create-customer --email … --restaurant-id …` | Kobler en ny bruger til en café, der allerede findes (fx en medarbejder) |
-| `list-customers` / `list-restaurants` | Viser kunder / caféer (med id) |
+| `invite --email …` | Sender en ny velkomstmail (den gamle virker ikke mere). Kun til kunder der ikke har valgt adgangskode |
+| `revoke-invite --email …` | Trækker en invitation tilbage |
+| `list-customers` / `list-restaurants` | Viser kunder (med status: afventer invitation / INVITATION UDLØBET / aktiv) / caféer (med id) |
 | `reset-password --email …` | Ny adgangskode, og kunden logges ud alle steder (glemt kode) |
 | `deactivate --email …` / `activate --email …` | Slår en kunde fra/til, og fra logger dem ud med det samme |
 | `stats [--days N] [--restaurant-id …]` | Hvor meget kunderne retter i Claudes udkast før de sender, og de mest rettede eksempler. Kun til os |
@@ -355,7 +364,7 @@ review-assistant/
     │   ├── db/
     │   │   ├── pool.py          # Forbindelsen til databasen
     │   │   ├── migrate.py       # Migrations-runner
-    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode)
+    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder)
     │   └── core/                # Indstillinger, fejl, sikkerhed, grænser og "hvem er logget ind"
     └── tests/                   # uv run pytest
 ```

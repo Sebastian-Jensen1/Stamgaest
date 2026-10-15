@@ -199,7 +199,10 @@ async def forgot_password(
     limits.forgot_ip.record(ip)
 
     user = await users.find_by_email(email)
-    if user is not None and user["is_active"]:
+    # Er kunden inviteret men har ikke valgt en adgangskode endnu, sendes der intet. Kun vi kan
+    # sende en ny invitation. Ellers kunne en fejlindtastet e-mail overtage en café ad omvejen
+    # efter at vi har trukket invitationen tilbage.
+    if user is not None and user["is_active"] and not user["invite_pending"]:
         background.add_task(_send_reset_mail, http, settings, user)
     return OkResponse()
 
@@ -231,6 +234,7 @@ async def reset_password(
     await users.update_password(user["user_id"], await auth_service.hash_password(body.new_password))
     # Hvem der end var logget ind (måske en der havde fået adgang), er det ikke længere. Og er
     # kunden blevet spærret af for mange forkerte logins, kan de logge ind igen med det samme.
+    await users.set_invite_pending(user["user_id"], False)  # kunden har nu valgt en adgangskode
     await sessions.delete_for_user(user["user_id"])
     await password_tokens.delete_for_user(user["user_id"])
     limits.login_email.reset(auth_service.normalize_email(user["email"]))
