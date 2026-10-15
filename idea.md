@@ -12,7 +12,7 @@ Sæt `[x]` når en idé er lavet.
 
 ## Mail og adgangskode
 
-- [ ] **#1 Mailservice + "glemt adgangskode"**
+- [x] **#1 Mailservice + "glemt adgangskode"**
   - Nu kører vi `reset-password` i terminalen og sender koden manuelt. Det skalerer ikke.
   - Flow: "Glemt kode" → token (hashet i DB, udløber efter ca. 1 time, kan kun bruges én gang)
     → mail med link → ny kode → alle sessioner logges ud.

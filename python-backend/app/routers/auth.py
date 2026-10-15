@@ -1,18 +1,29 @@
-"""Endpoints til login: log ind, log ud, hvem er jeg, og skift adgangskode."""
+"""Endpoints til login: log ind, log ud, hvem er jeg, skift adgangskode og glemt adgangskode."""
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Request, Response
+import logging
+
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 
 from app.core.config import Settings
-from app.core.deps import CurrentUser, get_limits, get_settings
+from app.core.deps import CurrentUser, get_http, get_limits, get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import Limits, describe_wait
-from app.models import restaurants, sessions, users
-from app.schemas.auth import ChangePasswordRequest, LoginRequest, MeResponse
+from app.models import password_tokens, restaurants, sessions, users
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
+    LoginRequest,
+    MeResponse,
+    ResetPasswordRequest,
+)
 from app.schemas.reviews import OkResponse
-from app.services import auth_service
+from app.services import auth_service, email_service
 from app.services.auth_service import SESSION_COOKIE, SESSION_LIFETIME
+
+logger = logging.getLogger("review_assistant")
 
 router = APIRouter()
 
@@ -135,4 +146,92 @@ async def change_password(
 
     await users.update_password(user["user_id"], await auth_service.hash_password(body.new_password))
     await sessions.delete_for_user(user["user_id"], except_token_hash=user["token_hash"])
+    return OkResponse()
+
+
+async def _send_reset_mail(http: httpx.AsyncClient, settings: Settings, user: dict) -> None:
+    """Laver et nulstillingslink til brugeren og sender det på mail.
+
+    Køres EFTER svaret er sendt til browseren. Så tager svaret lige lang tid, uanset om e-mailen
+    findes (og dermed om der skal sendes en mail), og man kan ikke gætte hvem der er kunde.
+    """
+    try:
+        token = auth_service.new_reset_token()
+        await password_tokens.delete_expired()
+        await password_tokens.create(
+            token_hash=auth_service.hash_token(token),
+            user_id=user["id"],
+            expires_at=datetime.now(timezone.utc) + auth_service.RESET_TOKEN_LIFETIME,
+        )
+        await email_service.send_password_reset(
+            http,
+            settings,
+            to=user["email"],
+            token=token,
+            minutes=int(auth_service.RESET_TOKEN_LIFETIME.total_seconds() // 60),
+        )
+    except Exception:  # noqa: BLE001 - en baggrundsopgave har ingen at svare til, så fejlen logges
+        logger.exception("Kunne ikke sende nulstillingsmail")
+
+
+@router.post("/auth/forgot-password", response_model=OkResponse)
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    background: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+    limits: Limits = Depends(get_limits),
+    http: httpx.AsyncClient = Depends(get_http),
+):
+    """POST /api/auth/forgot-password  Sender et link til at vælge ny adgangskode, hvis e-mailen findes.
+
+    Svarer ALTID ens, uanset om e-mailen findes, så man ikke kan gætte hvem der er kunde.
+    """
+    email = auth_service.normalize_email(body.email)
+    ip = _client_ip(request)
+
+    # Grænsen tæller alle forsøg, også på e-mails der ikke findes. Så siger den ikke noget om hvem
+    # der er kunde, og ingen kan fylde en andens indbakke med mails.
+    waits = [w for w in (limits.forgot_email.check(email), limits.forgot_ip.check(ip)) if w]
+    if waits:
+        raise _too_many_attempts(max(waits))
+    limits.forgot_email.record(email)
+    limits.forgot_ip.record(ip)
+
+    user = await users.find_by_email(email)
+    if user is not None and user["is_active"]:
+        background.add_task(_send_reset_mail, http, settings, user)
+    return OkResponse()
+
+
+@router.post("/auth/reset-password", response_model=OkResponse)
+async def reset_password(
+    body: ResetPasswordRequest,
+    request: Request,
+    limits: Limits = Depends(get_limits),
+):
+    """POST /api/auth/reset-password  Vælger ny adgangskode med nøglen fra mailen og logger ud alle steder."""
+    ip = _client_ip(request)
+    wait = limits.reset_ip.check(ip)
+    if wait:
+        raise _too_many_attempts(wait)
+
+    # Kravene til adgangskoden tjekkes FØR linket bruges. Ellers ville en for kort adgangskode
+    # opbruge linket, og kunden skulle bestille et nyt.
+    problem = auth_service.validate_new_password(body.new_password)
+    if problem:
+        raise ApiError(400, problem)
+
+    user = await password_tokens.use(auth_service.hash_token(body.token))
+    if user is None:
+        limits.reset_ip.record(ip)
+        # Samme besked uanset om linket er ukendt, udløbet eller brugt.
+        raise ApiError(400, "Linket virker ikke længere. Bed om et nyt.")
+
+    await users.update_password(user["user_id"], await auth_service.hash_password(body.new_password))
+    # Hvem der end var logget ind (måske en der havde fået adgang), er det ikke længere. Og er
+    # kunden blevet spærret af for mange forkerte logins, kan de logge ind igen med det samme.
+    await sessions.delete_for_user(user["user_id"])
+    await password_tokens.delete_for_user(user["user_id"])
+    limits.login_email.reset(auth_service.normalize_email(user["email"]))
     return OkResponse()

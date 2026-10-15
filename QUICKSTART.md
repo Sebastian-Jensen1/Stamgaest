@@ -23,6 +23,9 @@ cp .env.example .env                 #kopier, så lav din egen .env ud fra .env.
 | `DATABASE_URL` | Forbindelsesstrengen til Neon (står ikke i Git, spørg efter den) |
 | `ANTHROPIC_API_KEY` | Nøgle til Claude (console.anthropic.com) |
 | `GOOGLE_PLACES_API_KEY` | Nøgle til Google Places |
+| `RESEND_API_KEY` | Nøgle til Resend (mails). Uden den sendes der ingen "glemt adgangskode"-mails |
+| `MAIL_FROM` | Afsender, fx `Stamgæst <noreply@mail.stamgaest.com>` |
+| `APP_BASE_URL` | Adressen siden ligger på (lokalt `http://localhost:3000`) |
 
 Opret tabellerne i databasen (sikkert at køre igen):
 
@@ -107,7 +110,8 @@ gh pr create --base main             # opret pull request (tjek at base er main!
 | --- | --- |
 | `DATABASE_URL mangler` | Tjek at `.env` ligger i `python-backend/` og har nøglen |
 | "Der findes allerede en bruger" | Brug `reset-password` til den eksisterende bruger |
-| Mistet adgangskoden | `reset-password --email ...` |
+| Mistet adgangskoden | Kunden kan selv trykke "Glemt adgangskode?" på loginsiden. Virker mail ikke: `reset-password --email ...` |
+| Mailen kommer ikke frem | Tjek `RESEND_API_KEY`, at afsenderdomænet er bekræftet hos Resend, og spam-mappen |
 | Port 3000 er optaget | Luk den gamle server (`Ctrl+C`), eller ret `PORT` i `.env` |
 | Login virker ikke lokalt | Tjek at `COOKIE_SECURE` ikke er sat til 1 i `.env` |
 | `/docs` er hvid eller findes ikke | Sæt `ENABLE_DOCS=1` i `.env` og genstart |

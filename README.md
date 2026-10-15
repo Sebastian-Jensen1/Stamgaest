@@ -57,6 +57,32 @@ Hver kunde (fx en café) har et login, som er koblet til **præcis én café**. 
 - **Vi opretter kunderne selv.** Der er ingen tilmelding på siden og ingen admin-side på
   nettet, kun et kommandolinjeværktøj.
 
+### Glemt adgangskode (mail)
+
+Kunden trykker "Glemt adgangskode?" på loginsiden og skriver sin e-mail. Findes den, sender
+serveren et link, der virker i én time og kun én gang. Linket åbner siden, hvor kunden vælger en
+ny adgangskode, og bagefter er kunden logget ud alle steder.
+
+- **Samme svar uanset om e-mailen findes**, så man ikke kan gætte hvem der er kunde. Mailen sendes
+  efter svaret, så svartiden heller ikke afslører det.
+- **Nøglen står efter `#` i linket** (`/#nulstil=...`). Den sendes aldrig til serveren af browseren
+  og står derfor ikke i nogen log. Databasen gemmer kun et fingeraftryk af den.
+- **Højst 3 mails pr. e-mail og 10 pr. IP-adresse i timen**, også for e-mails der ikke findes.
+- Et nyt link gør de gamle ubrugelige. Slåede-fra brugere får ingen mail.
+- `reset-password` i kommandolinjeværktøjet virker stadig, hvis kunden ikke kan få mail.
+
+Mails sendes via [Resend](https://resend.com) og kræver tre ting i `.env`:
+
+| Nøgle | Hvad |
+| --- | --- |
+| `RESEND_API_KEY` | API-nøgle fra Resend (uden den sendes der ingen mails) |
+| `MAIL_FROM` | Afsender, fx `Stamgæst <noreply@mail.stamgaest.com>` |
+| `APP_BASE_URL` | Adressen siden ligger på. Lokalt `http://localhost:3000`, i drift `https://stamgaest.com` |
+
+Før kunder kan få mails, skal domænet bekræftes hos Resend: tilføj `mail.stamgaest.com` under
+**Domains**, opret de records Resend viser i Cloudflare (sæt skyen til **DNS only**), og tryk Verify.
+Indtil da virker kun Resends testafsender (standard), og den kan kun sende til din egen mail.
+
 ### Sådan opretter du en ny kunde (fx efter et besøg hos en café)
 
 Kør fra `python-backend/`:
@@ -245,7 +271,8 @@ En hel kørsel tager ca. 3 minutter, fordi databasen ligger i skyen.
   kundens, og grænsen for gætte-forsøg pr. IP virker så ikke rigtigt. Det skal løses ved opsætning.
 - **Tællerne til gætte-forsøg ligger i hukommelsen.** De nulstilles ved genstart og virker kun i
   én proces. Kører I flere processer, skal de flyttes til databasen.
-- **"Glemt adgangskode" sker pr. henvendelse til os** (`reset-password`). Der er ingen mail-flow.
+- **Mailafsenderen skal bekræftes hos Resend** (SPF/DKIM i Cloudflare), før "glemt adgangskode" kan
+  sende til kunder. Se "Glemt adgangskode (mail)" ovenfor.
 
 ## Vejen til "1-knap send direkte til Google"
 
@@ -324,11 +351,11 @@ review-assistant/
     │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate
     │   ├── schemas/             # Tjekker og former data ind og ud
     │   ├── services/            # Claude, Google Places og login (adgangskoder, sessioner)
-    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions)
+    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens)
     │   ├── db/
     │   │   ├── pool.py          # Forbindelsen til databasen
     │   │   ├── migrate.py       # Migrations-runner
-    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner)
+    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode)
     │   └── core/                # Indstillinger, fejl, sikkerhed, grænser og "hvem er logget ind"
     └── tests/                   # uv run pytest
 ```
@@ -338,7 +365,7 @@ indeholder både API-nøgler og adgangskoden til databasen.
 
 ## API-endpoints
 
-Alle endpoints undtagen login og logout kræver, at man er logget ind. Hvilken café det gælder,
+Alle endpoints undtagen login, logout og glemt adgangskode kræver, at man er logget ind. Hvilken café det gælder,
 ved serveren ud fra login, og den kan aldrig angives i kaldet.
 
 | Metode | Sti | Hvad den gør |
@@ -347,6 +374,8 @@ ved serveren ud fra login, og den kan aldrig angives i kaldet.
 | `POST` | `/api/auth/logout` | Sletter sessionen. |
 | `GET` | `/api/auth/me` | Hvem er logget ind, og hvilken café. Siden bruger den ved opstart. |
 | `POST` | `/api/auth/password` | Skifter adgangskode og logger andre enheder ud. |
+| `POST` | `/api/auth/forgot-password` | Sender et link til at vælge ny adgangskode, hvis e-mailen findes. Svarer altid ens. |
+| `POST` | `/api/auth/reset-password` | Vælger ny adgangskode med nøglen fra mailen og logger ud alle steder. |
 | `GET` | `/api/reviews` | Din cafés oplysninger og alle dens gemte anmeldelser (henter intet fra Google). |
 | `POST` | `/api/reviews/refresh` | Henter fra Google for **din** café, gemmer, og svarer med det der nu står i databasen. Højst en gang i minuttet. |
 | `POST` | `/api/generate` | Genererer udkast med Claude for de valgte anmeldelser og gemmer dem i `replies`. |
