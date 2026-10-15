@@ -74,6 +74,58 @@ uv run python -m app
 
 Ser du den gamle side, så er det browserens cache. Hård genindlæsning (`Cmd+Shift+R`) eller et privat vindue løser det.
 
+## Gør appen tilgængelig på nettet (Cloudflare Tunnel)
+
+Linket i "glemt adgangskode"-mails skal pege på en adresse, kunden kan åbne. En tunnel giver
+din lokale server adressen `https://app.stamgaest.com`, uden at du skal købe hosting. Den virker
+kun, mens din computer er tændt og serveren kører, så den er til test og demo og ikke til drift.
+
+**Engang (ca. 10 minutter):**
+
+```
+brew install cloudflared                            # kun hvis du ikke har den
+cloudflared tunnel login                            # åbner browseren: vælg stamgaest.com
+cloudflared tunnel create stamgaest                 # skriver et tunnel-id (UUID) og en .json-fil
+cloudflared tunnel route dns stamgaest app.stamgaest.com   # opretter DNS-recorden i Cloudflare
+```
+
+Opret filen `~/.cloudflared/config.yml` (ret `<ID>` til tunnel-id'et fra `create`):
+
+```
+tunnel: stamgaest
+credentials-file: /Users/DITBRUGERNAVN/.cloudflared/<ID>.json
+ingress:
+  - hostname: app.stamgaest.com
+    service: http://localhost:3000
+  - service: http_status:404
+```
+
+Tilføj i `python-backend/.env`:
+
+```
+ALLOWED_HOSTS=localhost,127.0.0.1,app.stamgaest.com
+COOKIE_SECURE=1
+APP_BASE_URL=https://app.stamgaest.com
+```
+
+**Hver gang du vil have den online** (to terminaler):
+
+```
+uv run python -m app                # i python-backend/
+cloudflared tunnel run stamgaest    # i en ny terminal
+```
+
+Åbn https://app.stamgaest.com. Med `COOKIE_SECURE=1` er det kun https-adressen, der er garanteret at
+virke. På `http://localhost:3000` afhænger det af browseren: Chrome og Firefox gemmer gerne cookien dér,
+Safari gør ikke. Vil du arbejde lokalt uden at tænke over det, så kommentér `COOKIE_SECURE` og
+`APP_BASE_URL` ud og genstart serveren.
+
+Serveren nægter at starte, hvis `COOKIE_SECURE=1` er sat uden en https-`APP_BASE_URL`.
+
+Husk: gennem tunnelen ser serveren alle besøgende som samme IP-adresse (`127.0.0.1`), så
+grænserne pr. IP (forkerte logins, glemt adgangskode) gælder alle samlet. Det er fint til test,
+men skal løses ved rigtig hosting (se README, afsnittet "Sikkerhed").
+
 ## Se hjemmesiden (stamgaest-website)
 
 Fra projektets rod:
@@ -113,5 +165,6 @@ gh pr create --base main             # opret pull request (tjek at base er main!
 | Mistet adgangskoden | Kunden kan selv trykke "Glemt adgangskode?" på loginsiden. Virker mail ikke: `reset-password --email ...` |
 | Mailen kommer ikke frem | Tjek `RESEND_API_KEY`, at afsenderdomænet er bekræftet hos Resend, og spam-mappen |
 | Port 3000 er optaget | Luk den gamle server (`Ctrl+C`), eller ret `PORT` i `.env` |
-| Login virker ikke lokalt | Tjek at `COOKIE_SECURE` ikke er sat til 1 i `.env` |
+| Login virker ikke lokalt | Tjek at `COOKIE_SECURE` ikke er sat til 1 i `.env` (eller brug https-adressen fra tunnelen) |
+| `Invalid host header` / 400 via tunnelen | Tilføj `app.stamgaest.com` i `ALLOWED_HOSTS` og genstart serveren |
 | `/docs` er hvid eller findes ikke | Sæt `ENABLE_DOCS=1` i `.env` og genstart |
