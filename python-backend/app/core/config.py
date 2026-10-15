@@ -71,7 +71,7 @@ def load_settings() -> Settings:
     """Læser miljøet og returnerer en færdig Settings."""
     hosts = os.getenv("ALLOWED_HOSTS") or "localhost,127.0.0.1"
     port = _port(_clean(os.getenv("PORT")))
-    return Settings(
+    settings = Settings(
         port=port,
         database_url=_clean(os.getenv("DATABASE_URL")),
         anthropic_api_key=_clean(os.getenv("ANTHROPIC_API_KEY")),
@@ -85,3 +85,12 @@ def load_settings() -> Settings:
         mail_from=_clean(os.getenv("MAIL_FROM")) or DEFAULT_MAIL_FROM,
         app_base_url=(_clean(os.getenv("APP_BASE_URL")) or f"http://localhost:{port}").rstrip("/"),
     )
+    # COOKIE_SECURE=1 betyder at siden ligger på et rigtigt domæne med HTTPS. Så skal linkene i
+    # mails også pege dertil. Ellers ville en kunde få et link til localhost, som ikke virker.
+    if settings.cookie_secure and not settings.app_base_url.startswith("https://"):
+        raise RuntimeError(
+            "COOKIE_SECURE=1 er sat, men APP_BASE_URL er ikke en https-adresse "
+            f"(den er {settings.app_base_url!r}). Sæt APP_BASE_URL=https://dit-domæne i .env, "
+            "ellers får kunderne mails med et link der ikke virker."
+        )
+    return settings

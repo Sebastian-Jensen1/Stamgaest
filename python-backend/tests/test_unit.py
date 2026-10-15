@@ -492,3 +492,25 @@ def test_summarize_sorts_edits_into_groups():
 
 def test_summarize_of_nothing_is_none():
     assert edit_metrics.summarize([]) is None
+
+
+def test_server_refuses_to_start_in_production_with_a_localhost_mail_link(monkeypatch):
+    """Ellers ville kunder få mails med et link til localhost, som ikke virker."""
+    from app.core.config import load_settings
+
+    monkeypatch.setenv("COOKIE_SECURE", "1")
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+    with pytest.raises(RuntimeError, match="APP_BASE_URL"):
+        load_settings()
+
+    monkeypatch.setenv("APP_BASE_URL", "https://app.stamgaest.com/")
+    assert load_settings().app_base_url == "https://app.stamgaest.com"  # skråstreg til sidst fjernes
+
+
+def test_localhost_mail_link_is_fine_when_running_locally(monkeypatch):
+    from app.core.config import load_settings
+
+    monkeypatch.delenv("COOKIE_SECURE", raising=False)
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+    monkeypatch.setenv("PORT", "3000")
+    assert load_settings().app_base_url == "http://localhost:3000"

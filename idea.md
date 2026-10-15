@@ -12,7 +12,7 @@ Sæt `[x]` når en idé er lavet.
 
 ## Mail og adgangskode
 
-- [x] **#1 Mailservice + "glemt adgangskode"**
+- [x] **#1 Mailservice + "glemt adgangskode"** (koden og Resend virker; kunderne kan først bruge linket, når appen kan nås på nettet, se #16)
   - Nu kører vi `reset-password` i terminalen og sender koden manuelt. Det skalerer ikke.
   - Flow: "Glemt kode" → token (hashet i DB, udløber efter ca. 1 time, kan kun bruges én gang)
     → mail med link → ny kode → alle sessioner logges ud.
@@ -58,3 +58,11 @@ Sæt `[x]` når en idé er lavet.
 - [ ] **#13 Fejlovervågning** (Sentry) og uptime-check, nu hvor kunder er afhængige af det.
 - [ ] **#14 Forbrugsloft og audit-log** på Claude-kald, så ingen kan løbe API-regningen op.
 - [ ] **#15 2FA** eller "log ind via mail-link" (magic link) som alternativ til adgangskoder.
+
+## Hosting
+
+- [ ] **#16 Appen på nettet**: linket i mails (`APP_BASE_URL`) skal pege på en adresse kunder kan åbne.
+  - Trin 1 (test/demo): Cloudflare Tunnel til `app.stamgaest.com` fra egen computer, gratis. Se QUICKSTART.
+  - Trin 2 (drift): betalt host (fx Render, Railway, Fly.io, cirka 5-10 USD/md.), `COOKIE_SECURE=1`,
+    `ALLOWED_HOSTS`, og IP-grænserne skal løses bag en proxy (se README, "Sikkerhed").
+  - Beslutning taget: dashboardet på `app.stamgaest.com`, hjemmesiden forbliver på `stamgaest.com`.
