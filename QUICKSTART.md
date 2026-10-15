@@ -36,16 +36,19 @@ uv run python -m app.db.migrate
 ## Opret en bruger (kunde)
 
 En kunde hører til præcis én café. Man kan ikke tilmelde sig på siden, så brugere oprettes her.
+Kunden får en **invitation på mail** og vælger selv sin adgangskode, så du aldrig ser den.
 
 ```
 # 1. Find caféens Google place-id (starter med ChIJ...)
 uv run python -m app.admin search "navn og by" fx: "Café Gotland København"
 
-# 2. Opret kunden. Anmeldelserne hentes med det samme
+# 2. Opret kunden. Anmeldelserne hentes med det samme, og invitationen sendes
 uv run python -m app.admin create-customer --email ejer@gotland.dk --place-id ChIJ... --business-type café
 ```
 
-Adgangskoden vises **kun én gang**. Kopiér den med det samme, og giv den til kunden.
+Værktøjet beder dig **skrive e-mailadressen igen**, før noget sker. Det er for at fange tastefejl:
+en invitation til en forkert adresse kunne give en fremmed adgang til caféen. Linket i mailen virker
+i **7 dage** og kun én gang.
 
 Skal en ekstra medarbejder have adgang til en café, der allerede findes:
 
@@ -53,6 +56,29 @@ Skal en ekstra medarbejder have adgang til en café, der allerede findes:
 uv run python -m app.admin list-restaurants                      # find café-id
 uv run python -m app.admin create-customer --email medarbejder@gotland.dk --restaurant-id <id>
 ```
+
+### Send igen, træk tilbage, se status
+
+```
+uv run python -m app.admin invite --email ejer@gotland.dk          # send en ny velkomstmail (den gamle virker ikke mere)
+uv run python -m app.admin revoke-invite --email ejer@gotland.dk   # træk invitationen tilbage
+uv run python -m app.admin list-customers                          # status: afventer invitation / INVITATION UDLØBET / aktiv
+```
+
+Indtil kunden har valgt en adgangskode, kan "Glemt adgangskode?" **ikke** bruges. Kun du kan sende en ny
+invitation. Det er med vilje, så en trukket invitation ikke kan omgås.
+
+`invite` virker kun for kunder, der ikke har valgt en adgangskode endnu. Har de glemt den, så brug
+"Glemt adgangskode?" på loginsiden.
+
+Kan en kunde ikke få mail, kan du i stedet vise en adgangskode **én gang** (vises i terminalen, så giv den videre
+på en sikker måde):
+
+```
+uv run python -m app.admin create-customer --email ejer@gotland.dk --place-id ChIJ... --show-password
+```
+
+Vil du springe bekræftelsen af e-mailen over (fx i et script), så tilføj `--yes`.
 
 ## Administrér brugere
 
@@ -161,7 +187,8 @@ gh pr create --base main             # opret pull request (tjek at base er main!
 | Problem | Løsning |
 | --- | --- |
 | `DATABASE_URL mangler` | Tjek at `.env` ligger i `python-backend/` og har nøglen |
-| "Der findes allerede en bruger" | Brug `reset-password` til den eksisterende bruger |
+| "Der findes allerede en bruger" | Brug `invite` (hvis de ikke har valgt adgangskode) eller `reset-password` til den eksisterende bruger |
+| Kunden har ikke fået invitationen | Tjek spam. Send en ny med `invite --email ...`. Se `list-customers` for status |
 | Mistet adgangskoden | Kunden kan selv trykke "Glemt adgangskode?" på loginsiden. Virker mail ikke: `reset-password --email ...` |
 | Mailen kommer ikke frem | Tjek `RESEND_API_KEY`, at afsenderdomænet er bekræftet hos Resend, og spam-mappen |
 | Port 3000 er optaget | Luk den gamle server (`Ctrl+C`), eller ret `PORT` i `.env` |

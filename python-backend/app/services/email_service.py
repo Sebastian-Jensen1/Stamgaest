@@ -59,3 +59,23 @@ async def send_password_reset(http: httpx.AsyncClient, settings: Settings, *, to
         "Venlig hilsen\nStamgæst"
     )
     return await send_email(http, settings, to=to, subject="Vælg ny adgangskode til Stamgæst", text=text)
+
+
+async def send_invitation(
+    http: httpx.AsyncClient, settings: Settings, *, to: str, token: str, business_name: str, days: int
+) -> bool:
+    """Sender velkomstmailen til en ny kunde, med linket til at vælge sin første adgangskode.
+
+    Samme link som ved "glemt adgangskode": nøglen står efter # (se send_password_reset).
+    """
+    link = f"{settings.app_base_url}/#nulstil={token}"
+    text = (
+        "Velkommen til Stamgæst\n\n"
+        f"Der er oprettet en konto til dig, så du kan se og besvare anmeldelserne for {business_name}.\n\n"
+        f"Brug dette link for at vælge din adgangskode (det virker i {days} dage og kun én gang):\n"
+        f"{link}\n\n"
+        "Bagefter logger du ind med denne e-mailadresse og den adgangskode, du har valgt.\n\n"
+        "Kom du ikke forventet denne mail, kan du bare slette den.\n\n"
+        "Venlig hilsen\nStamgæst"
+    )
+    return await send_email(http, settings, to=to, subject="Velkommen til Stamgæst: vælg din adgangskode", text=text)
