@@ -44,7 +44,7 @@ def seed(client, **kwargs):
 
 def test_migrations_apply_once_and_are_idempotent(migration_result):
     first, second = migration_result
-    assert first == 5  # 001_init, 002_auth, 003_password_tokens, 004_invitations og 005_usage
+    assert first == 7  # 001-007 (init, auth, password_tokens, invitations, usage, reply_profiles, reply_profile_v2)
     assert second == 0  # næste kørsel gør ingenting
 
 
@@ -194,6 +194,11 @@ def test_google_returning_garbage_becomes_502(client):
 # ---- generér udkast --------------------------------------------------------------
 
 
+def full_prompt(call: dict) -> str:
+    """Hele prompten i ét kald til Claude: system-prompten (caféens profil) og brugerbeskeden."""
+    return "\n".join(block["text"] for block in call["system"]) + "\n" + call["messages"][0]["content"]
+
+
 def generate(client, ids, **extra):
     return client.post("/api/generate", json={"reviews": [{"id": i} for i in ids], **extra})
 
@@ -202,7 +207,7 @@ def test_generate_saves_drafts_and_marks_reviews_ready(client):
     _, reviews = seed(client)
     claude = use_claude(client, FakeClaude())
 
-    response = generate(client, [reviews["r1"]["id"], reviews["r2"]["id"]], tone="varmt")
+    response = generate(client, [reviews["r1"]["id"], reviews["r2"]["id"]])
     assert response.status_code == 200
     results = response.json()["results"]
     assert [r["draft"] for r in results] == ["Udkast nr. 1", "Udkast nr. 2"]  # trimmet
@@ -210,12 +215,11 @@ def test_generate_saves_drafts_and_marks_reviews_ready(client):
     assert results[0]["reviewerName"] == "Ida"
 
     saved = client.get("/api/reviews").json()
-    assert saved["defaultTone"] == "varmt"  # tonen huskes
     assert by_external_id(saved)["r1"]["status"] == "ready"
     assert by_external_id(saved)["r1"]["draft"] == "Udkast nr. 1"
 
     # Prompten bygges af det der ligger i databasen: anmeldelsen og CAFÉENS navn og branche.
-    prompt = claude.calls[0]["messages"][0]["content"]
+    prompt = full_prompt(claude.calls[0])
     assert "Fantastisk kaffe!" in prompt
     assert "Test Café (café)" in prompt
     assert claude.calls[0]["model"] == "test-model"
@@ -233,7 +237,7 @@ def test_generate_ignores_everything_the_client_claims_about_the_cafe_and_review
         json={"reviews": [{"id": reviews["r1"]["id"], "reviewText": "SNYDETEKST", "reviewerName": "SNYD", "rating": 1}]},
     )
     for call in claude.calls:
-        prompt = call["messages"][0]["content"]
+        prompt = full_prompt(call)
         assert "HACKER" not in prompt and "SNYD" not in prompt
         assert "Fantastisk kaffe!" in prompt and "Test Café" in prompt
 
@@ -298,7 +302,6 @@ def test_generate_is_limited_per_user_to_keep_the_bill_down(client):
         {"reviews": []},
         {"reviews": [{"id": "1' OR '1'='1"}]},
         {"reviews": [{"id": "00000000-0000-0000-0000-000000000000"}] * 26},
-        {"tone": "x" * 101, "reviews": [{"id": "00000000-0000-0000-0000-000000000000"}]},
         {},
     ],
 )
@@ -393,8 +396,12 @@ def test_sql_injection_attempts_are_inert(client):
     _, reviews = seed(client)
     evil = "'; DROP TABLE reviews; --"
     use_claude(client, FakeClaude())
-    generate(client, [reviews["r1"]["id"]], tone=evil)
-    assert client.get("/api/reviews").json()["defaultTone"] == evil  # gemt som ren tekst
+    settings = {"replyLength": "auto", "tone": evil, "signature": evil, "avoid": "", "contact": "", "examples": "",
+                "about": {"concept": evil, "items": [evil], "traits": [], "atmosphere": ""}}
+    assert client.put("/api/reply-settings", json=settings).status_code == 200
+    generate(client, [reviews["r1"]["id"]])
+    saved = client.get("/api/reply-settings").json()
+    assert saved["tone"] == evil and saved["about"]["items"] == [evil]  # gemt som ren tekst
     assert db_rows(client, "SELECT count(*) FROM reviews") == [(2,)]  # tabellen findes stadig
 
 

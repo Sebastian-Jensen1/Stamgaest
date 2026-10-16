@@ -16,7 +16,11 @@ from app.services import email_service
 
 logger = logging.getLogger("review_assistant")
 
-_KIND_LABEL = {usage.DRAFT: "udkast fra Claude", usage.FETCH: "hentninger fra Google"}
+_KIND_LABEL = {
+    usage.DRAFT: "udkast fra Claude",
+    usage.FETCH: "hentninger fra Google",
+    usage.PROFILE: "profiler bygget fra hjemmesider",
+}
 _SCOPE_LABEL = {
     "cafe_day": "pr. café pr. dag",
     "cafe_month": "pr. café pr. måned",
@@ -27,7 +31,7 @@ _SCOPE_LABEL = {
 
 def caps_for(kind: str, settings: Settings) -> Caps:
     """Giver lofterne for en slags kald."""
-    return settings.draft_caps if kind == usage.DRAFT else settings.fetch_caps
+    return {usage.DRAFT: settings.draft_caps, usage.FETCH: settings.fetch_caps, usage.PROFILE: settings.profile_caps}[kind]
 
 
 def refusal_message(kind: str, scope: str, *, used: int, cap: int) -> str:
@@ -39,6 +43,11 @@ def refusal_message(kind: str, scope: str, *, used: int, cap: int) -> str:
         if scope == "cafe_month":
             return f"Din café har {left} udkast tilbage denne måned. Kontakt Stamgæst, hvis I har brug for flere."
         return "Udkast er midlertidigt ikke tilgængelige. Prøv igen senere."
+    if kind == usage.PROFILE:
+        if scope.startswith("cafe"):
+            period = "i dag" if scope == "cafe_day" else "denne måned"
+            return f"Profilen er bygget mange gange {period}. Ret i teksten selv, eller prøv igen senere."
+        return "Det er midlertidigt ikke muligt at bygge en profil. Prøv igen senere."
     if scope == "cafe_day":
         return "Anmeldelserne er hentet mange gange i dag. Prøv igen i morgen."
     if scope == "cafe_month":

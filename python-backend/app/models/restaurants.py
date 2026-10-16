@@ -17,6 +17,7 @@ async def upsert_by_place_id(
     address: str | None,
     google_rating: float | None,
     google_rating_count: int | None,
+    website_url: str | None = None,
 ) -> dict:
     """Opretter stedet, eller opdaterer det hvis vi kender det i forvejen. Returnerer rækken.
 
@@ -26,15 +27,16 @@ async def upsert_by_place_id(
     return await fetch_one_required(
         """
         INSERT INTO restaurants
-          (google_place_id, name, business_type, address, google_rating, google_rating_count)
-        VALUES (%s, %s, %s, %s, %s, %s)
+          (google_place_id, name, business_type, address, google_rating, google_rating_count, website_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (google_place_id) DO UPDATE SET
           name                = EXCLUDED.name,
           address             = EXCLUDED.address,
           google_rating       = EXCLUDED.google_rating,
           google_rating_count = EXCLUDED.google_rating_count,
           -- COALESCE = "brug den nye værdi, men behold den gamle hvis den nye er tom".
-          business_type       = COALESCE(EXCLUDED.business_type, restaurants.business_type)
+          business_type       = COALESCE(EXCLUDED.business_type, restaurants.business_type),
+          website_url         = COALESCE(EXCLUDED.website_url, restaurants.website_url)
         RETURNING *
         """,
         (
@@ -44,6 +46,7 @@ async def upsert_by_place_id(
             address or None,
             google_rating,
             google_rating_count,
+            website_url,
         ),
     )
 
@@ -78,14 +81,6 @@ async def update_business_type(restaurant_id: UUID, business_type: str) -> None:
     await fetch_all(
         "UPDATE restaurants SET business_type = %s WHERE id = %s RETURNING id",
         (business_type or None, restaurant_id),
-    )
-
-
-async def update_default_tone(restaurant_id: UUID, tone: str | None) -> dict | None:
-    """Gemmer den tone ejeren har valgt, så den huskes til næste gang."""
-    return await fetch_one(
-        "UPDATE restaurants SET default_tone = %s WHERE id = %s RETURNING *",
-        (tone or None, restaurant_id),
     )
 
 

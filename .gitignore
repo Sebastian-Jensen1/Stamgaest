@@ -8,3 +8,6 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# Rapporter fra testsættet (evals). Kan indeholde rigtige anmeldelser, så de committes ikke.
+python-backend/evals/out/

@@ -91,6 +91,7 @@ async def create_customer(
             address=details.address,
             google_rating=details.rating,
             google_rating_count=details.user_rating_count,
+            website_url=details.website,
         )
         await reviews.upsert_many(restaurant["id"], details.reviews)
         await restaurants.claim_refresh(restaurant["id"], 0)  # noterer at anmeldelserne er hentet nu
@@ -341,7 +342,9 @@ async def _usage(settings: Settings, args: argparse.Namespace) -> None:
     price_out = settings.claude_price_output_per_mtok
 
     def dollars(row: dict) -> float:
-        return (row["input_tokens"] * price_in + row["output_tokens"] * price_out) / 1_000_000
+        tokens_in = row["input_tokens"] + row["profile_input_tokens"]
+        tokens_out = row["output_tokens"] + row["profile_output_tokens"]
+        return (tokens_in * price_in + tokens_out * price_out) / 1_000_000
 
     if settings.ai_paused:
         print("BEMÆRK: AI_PAUSED=1 er sat, så udkast er slået fra for ALLE.\n")
@@ -349,25 +352,27 @@ async def _usage(settings: Settings, args: argparse.Namespace) -> None:
     print("Lige nu (hele Stamgæst, dansk tid)")
     print(_caps_line("Udkast fra Claude", await usage.current(usage.DRAFT), settings.draft_caps))
     print(_caps_line("Hentninger fra Google", await usage.current(usage.FETCH), settings.fetch_caps))
+    print(_caps_line("Profiler fra hjemmesider", await usage.current(usage.PROFILE), settings.profile_caps))
 
     print(f"\nPr. café, de sidste {args.days} dage")
     if not rows:
         print("  Intet forbrug endnu.")
         return
-    print(f"  {'Café':30} {'Udkast':>7} {'Tokens ind':>11} {'Tokens ud':>10} {'Anslået':>9} {'Hentninger':>11}")
+    print(f"  {'Café':30} {'Udkast':>7} {'Tokens ind':>11} {'Tokens ud':>10} {'Anslået':>9} {'Hentninger':>11} {'Profiler':>9}")
     for row in rows:
         flag = "" if row["ai_enabled"] in (True, None) else "   [udkast slået fra]"
         print(
             f"  {row['restaurant_name'][:30]:30} {row['drafts']:>7} {row['input_tokens']:>11} "
-            f"{row['output_tokens']:>10} {'$' + format(dollars(row), '.2f'):>9} {row['fetches']:>11}{flag}"
+            f"{row['output_tokens']:>10} {'$' + format(dollars(row), '.2f'):>9} {row['fetches']:>11} {row['profiles']:>9}{flag}"
         )
-    total = {key: sum(row[key] for row in rows) for key in ("drafts", "input_tokens", "output_tokens", "fetches")}
+    keys = ("drafts", "input_tokens", "output_tokens", "fetches", "profiles", "profile_input_tokens", "profile_output_tokens")
+    total = {key: sum(row[key] for row in rows) for key in keys}
     print(
         f"  {'I alt':30} {total['drafts']:>7} {total['input_tokens']:>11} {total['output_tokens']:>10} "
-        f"{'$' + format(dollars(total), '.2f'):>9} {total['fetches']:>11}"
+        f"{'$' + format(dollars(total), '.2f'):>9} {total['fetches']:>11} {total['profiles']:>9}"
     )
     print(
-        f"\nBeløbet er kun Claude, anslået ud fra {price_in:g}/{price_out:g} USD pr. million tokens ind/ud "
+        f"\nTokens-kolonnerne er udkast. Beløbet er Claude i alt (udkast og profiler), anslået ud fra {price_in:g}/{price_out:g} USD pr. million tokens ind/ud "
         "(CLAUDE_PRICE_*_PER_MTOK i .env). Den rigtige regning står i Anthropic Console. "
         "Google-prisen står i Google Cloud Console."
     )

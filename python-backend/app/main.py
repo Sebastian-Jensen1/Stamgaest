@@ -27,7 +27,7 @@ from app.core.security import (
     inline_script_hashes,
 )
 from app.db import pool as db_pool
-from app.routers import auth, generate, reviews
+from app.routers import auth, generate, reply_settings, reviews
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -76,6 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth.router, prefix="/api")
     app.include_router(generate.router, prefix="/api")
     app.include_router(reviews.router, prefix="/api")
+    app.include_router(reply_settings.router, prefix="/api")
 
     # Server siden (index.html). Kun mappen public/ er tilgængelig, ikke koden eller .env.
     if settings.public_dir.is_dir():

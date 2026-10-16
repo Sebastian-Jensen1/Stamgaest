@@ -1,7 +1,3 @@
-# Idéer til Stamgæst
-
-Samlet liste over ting vi kan bygge. Nummereringen bruges i samtaler ("lad os lave #1").
-Sæt `[x]` når en idé er lavet.
 
 ## Anbefalet rækkefølge
 
@@ -28,8 +24,7 @@ Sæt `[x]` når en idé er lavet.
 
 ## Mail-baserede features (bygger på #1)
 
-**Kan ikke bygges endnu.** #3 og #4 kræver, at nye anmeldelser opdages automatisk (#8), og det
-kræver en server der kører hele tiden (#16). Rækkefølge: #16 → #8 → #4 → #3.
+**Kan ikke bygges endnu.** #3 og #4 kræver, at nye anmeldelser opdages automatisk (#8), og det kræver en server der kører hele tiden (#16). Rækkefølge: #16 → #8 → #4 → #3.
 
 - [ ] **#3 Ugentlig/daglig digest**: "Du har 3 nye anmeldelser, 1 er 1-stjernet", med link til at svare.
   - Kun tal og et link i mailen, ingen anmeldernavne eller tekst (de er persondata, vis dem kun efter login).
@@ -42,7 +37,7 @@ kræver en server der kører hele tiden (#16). Rækkefølge: #16 → #8 → #4 �
 
 ## Produktforbedringer
 
-- [ ] **#6 Selvbetjening af tone/stil**: kunden vælger tone (formel, afslappet, humoristisk), faste
+- [x] **#6 Selvbetjening af tone/stil**: kunden vælger tone (formel, afslappet, humoristisk), faste
   vendinger, ting der aldrig skal siges, og underskrift (cafénavn/ejernavn).
 - [ ] **#7 Svar direkte på Google** via Business Profile API, så man slipper for copy-paste.
   Kræver Googles godkendelse, så ansøgningen bør startes tidligt.

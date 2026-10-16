@@ -32,7 +32,6 @@ def _dashboard(restaurant: dict, rows: list[dict]) -> dict:
         "restaurant_id": restaurant["id"],
         "business_name": restaurant["name"],
         "business_type": restaurant["business_type"] or "",
-        "default_tone": restaurant["default_tone"] or "",
         "address": restaurant["address"] or "",
         "rating": restaurant["google_rating"],
         "user_rating_count": restaurant["google_rating_count"],
@@ -100,6 +99,7 @@ async def refresh_reviews(
             address=details.address,
             google_rating=details.rating,
             google_rating_count=details.user_rating_count,
+            website_url=details.website,
         )
         await reviews.upsert_many(restaurant["id"], details.reviews)
     except Exception:

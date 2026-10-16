@@ -19,6 +19,7 @@ uv run pytest                             # alle tests (db-tests springes over u
 uv run pytest tests/test_unit.py          # kun tests uden database
 uv run python -m app.db.migrate           # kør nye migrationer
 uv run python -m app.admin --help         # opret/administrér kunder (kun til os)
+uv run python -m evals.compare            # testsæt: sammenlign udkast før/efter en prompt-ændring (koster lidt)
 ```
 
 Kør `uv run pytest` efter hver ændring i backenden, og før du siger at noget er færdigt.

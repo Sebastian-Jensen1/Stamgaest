@@ -90,6 +90,28 @@ uv run python -m app.admin deactivate --email ejer@gotland.dk       # slå fra, 
 uv run python -m app.admin activate --email ejer@gotland.dk         # slå til igen
 ```
 
+## Gør udkastene skræddersyede (før en demo eller pilot)
+
+Log ind som caféen, og tryk **"Indstillinger for svar"** øverst i dashboardet:
+
+1. **Stil:** vælg længde (Automatisk er et godt sted at starte), beskriv tonen med egne ord, skriv
+   underskrift, og hvad der aldrig må skrives.
+2. **Om stedet:** tryk **"Lav forslag fra jeres hjemmeside"**. Efter ca. et halvt minut kommer
+   Claudes forslag med et flueben ved hvert punkt. Fjern fluebenet ved det irrelevante, ret
+   teksten, hvor det trænger, og tryk **"Tilføj valgte"** (det gemmer også).
+3. **Eksempler:** indsæt 3-5 svar, caféen selv har skrevet (fx fra deres Google-profil).
+4. **Prøv et udkast:** vælg en anmeldelse, og se svaret med det, der står på siden.
+5. Tryk **"Gem indstillinger"**.
+
+Tjek kvaliteten med testsættet, før du viser det til nogen:
+
+```
+uv run python -m app.admin list-restaurants                      # find café-id
+uv run python -m evals.compare --restaurant-id <id>             # ca. 0,30 USD, du skal sige ja først
+```
+
+Åbn rapporten (stien står i terminalen) i browseren, og læs svarene igennem.
+
 ## Beskyt mod en stor regning
 
 Hvert udkast fra Claude og hver hentning fra Google koster penge. Der er lofter pr. café og for hele
@@ -213,6 +235,7 @@ gh pr create --base main             # opret pull request (tjek at base er main!
 | --- | --- |
 | `DATABASE_URL mangler` | Tjek at `.env` ligger i `python-backend/` og har nøglen |
 | "Der findes allerede en bruger" | Brug `invite` (hvis de ikke har valgt adgangskode) eller `reset-password` til den eksisterende bruger |
+| "Google sendte ingen anmeldelser for jeres sted" | Google svarer uden anmeldelser i stedet for at give en fejl, når API-nøglen ikke er sat helt op. Tjek at oprettelsen af nøglen er gjort færdig i Google Cloud Console, at den er begrænset til **Places API (New)**, og at dagens loft (Quotas) ikke er brugt op. Serverens log skriver "Google sendte 0 anmeldelser ..." |
 | Kunden har ikke fået invitationen | Tjek spam. Send en ny med `invite --email ...`. Se `list-customers` for status |
 | Mistet adgangskoden | Kunden kan selv trykke "Glemt adgangskode?" på loginsiden. Virker mail ikke: `reset-password --email ...` |
 | Mailen kommer ikke frem | Tjek `RESEND_API_KEY`, at afsenderdomænet er bekræftet hos Resend, og spam-mappen |
