@@ -120,6 +120,58 @@ tilbage. Kan en kunde ikke få mail, kan `--show-password` vise en adgangskode �
 | `ai-off --restaurant-id …` / `ai-on --restaurant-id …` | Nødbremse: slår udkast fra Claude fra/til for én café med det samme |
 | `stats [--days N] [--restaurant-id …]` | Hvor meget kunderne retter i Claudes udkast før de sender, og de mest rettede eksempler. Kun til os |
 
+## Svar skræddersyet til hver café
+
+Hver café har sine egne **"Indstillinger for svar"** (knappen øverst i dashboardet åbner en
+side for sig, der følger `DESIGN_savvycal.md`). Claude får dem med i hvert udkast, så svarene
+lyder som caféen og ikke som en generisk virksomhed. Svarene skrives altid med "du".
+
+| Del | Hvad | Hvem |
+| --- | --- | --- |
+| **Stil** | Længde (Automatisk, Meget kort, Kort, Mellem, Lang), tonen med egne ord, underskrift, ting der aldrig må skrives, hvor utilfredse gæster henvises hen | Ejeren |
+| **Om stedet** | Koncept, retter og drikke (mærkater), kendetegn (liste), stemning | Ejeren, evt. ud fra Claudes forslag fra hjemmesiden |
+| **Eksempler** | Svar ejeren selv har skrevet og er glad for | Ejeren indsætter dem |
+| **Tidligere svar** | De 5 seneste svar caféen har sendt gennem Stamgæst (efter rettelser) | Automatisk |
+
+**Regler, der altid gælder** (står i system-prompten og kan ikke ændres af caféen): fakta bruges
+kun til at kommentere det, anmelderen selv nævner. Ingen priser, åbningstider, løfter, rabatter,
+kompensation eller reklame. Ejerens ønsker følges, så længe de ikke strider mod reglerne.
+
+**"Lav forslag fra jeres hjemmeside":**
+- Hjemmesiden er den, Google oplyser for stedet. Kunden kan ikke pege Claude på en anden side.
+- Claude henter siderne med sit eget web-fetch-værktøj (Anthropic henter, ikke vores server), kun
+  på caféens eget domæne og højst 5 sider. Priser og åbningstider kommer aldrig med i forslaget.
+- Det kører i baggrunden (typisk under et minut), og siden viser status undervejs.
+- **Forslaget bruges aldrig, før ejeren har valgt fra det.** Det vises i de samme felter, med et
+  flueben ved hvert punkt, og kun det, der er nyt i forhold til det, der allerede står. Ejeren fjerner
+  fluebenet ved det irrelevante, kan rette teksten i hvert punkt og trykker "Tilføj valgte", som
+  også gemmer. Hjemmesiden kan være forældet, og teksten kommer fra en tredjepart.
+- Det tæller under sine egne lofter (`CAP_PROFILES_*`) og nødbremserne.
+
+**"Prøv et udkast"** på samme side laver ét udkast til en af caféens anmeldelser med det, der står
+på siden lige nu, også før det er gemt. Det gemmes ikke, og det tæller som et udkast under lofterne.
+
+**Pris:** profilen gør hvert udkast længere, men den caches hos Claude ("prompt caching"), så den
+næsten kun betales én gang ad gangen for flere udkast i træk.
+
+### Testsæt: bliver udkastene faktisk bedre?
+
+`python-backend/evals/` indeholder 15 opdigtede, svære anmeldelser (vrede kunder, krav om penge
+tilbage, kun stjerner, tysk, prompt injection, en ret der ikke er på menuen, et spørgsmål osv.)
+til et opdigtet sted med en fuld profil. Hver har et "tjek", der siger, hvad et godt svar skal
+eller ikke må.
+
+```
+uv run python -m evals.compare                          # gammel prompt mod ny prompt
+uv run python -m evals.compare --restaurant-id <id>     # med en rigtig cafés profil og anmeldelser
+uv run python -m evals.compare --compare-model <model>  # sammenlign to modeller med den nye prompt
+```
+
+Det kalder Claude rigtigt (ca. 0,30 USD for hele sættet), så prisen vises, og du skal sige ja
+først. Resultatet er en HTML-side i `evals/out/` med svarene side om side. Mappen er i
+`.gitignore`, for den kan indeholde rigtige anmeldelser. Kør det, hver gang prompten ændres,
+og før en ny café går i gang.
+
 ## Database (PostgreSQL på Neon)
 
 Databasen ligger hos [Neon](https://neon.tech/) og kører døgnet rundt, så vi
@@ -214,10 +266,11 @@ Nyttige kommandoer: `\dt` (vis tabeller), `\d reviews` (vis kolonner),
 1. Log ind med den e-mail og adgangskode, du har fået
 2. Klik "Hent seneste anmeldelser" — de lander under "Nye / ubesvarede"
 3. Brug filter-chips (fx "★★★★★") til at vælge en gruppe, sæt flueben ved dem du vil have svar til
-4. Vælg tone, og klik "Generér svar for valgte" — udkast dukker op under hver anmeldelse, redigérbare
+4. Klik "Generér svar for valgte" — udkast dukker op under hver anmeldelse, redigérbare. Tonen og
+   resten af stilen kommer fra "Indstillinger for svar"
 5. Klik "Send til Google" — kopierer svaret til udklipsholderen og flytter anmeldelsen til "Besvarede"-fanen
 6. Har en anmeldelse allerede fået svar direkte på Google (fx før I brugte dette værktøj), sæt flueben ved den og klik "Markér som besvaret" for at flytte den til "Besvarede" uden at generere et nyt svar
-7. Første gang: skift adgangskoden under "Skift adgangskode" øverst
+7. Udfyld "Indstillinger for svar", så udkastene lyder som jer (se "Svar skræddersyet til hver café")
 
 ## Tests
 
@@ -229,15 +282,17 @@ uv run pytest
 
 Der er to slags tests. Ingen af dem koster penge eller rører jeres rigtige data:
 
-- **Uden database** (`tests/test_unit.py`): validering, sikkerhedsheaders, prompten,
+- **Uden database** (`tests/test_unit.py`): validering, sikkerhedsheaders, prompten og caféens profil i den,
   TLS-opsætningen, adgangskoder, begrænsning af gætte-forsøg og at alle endpoints kræver login.
 - **Med database** (`tests/test_*_db.py`): kundens hele flow (`test_api_db`), login og
   sessioner (`test_auth_db`), **at en kunde aldrig kan se eller ændre en anden kundes data**
-  (`test_isolation_db`) og admin-værktøjet (`test_admin_db`). De kører i et midlertidigt
+  (`test_isolation_db`), admin-værktøjet (`test_admin_db`), glemt adgangskode og invitation,
+  lofterne for betalte kald (`test_usage_db`) og indstillinger for svar (`test_reply_settings_db`). De kører i et midlertidigt
   schema med tilfældigt navn i Neon, som oprettes før og slettes efter. Google og Claude er
   falske. Mangler `DATABASE_URL`, springes de over.
 
-En hel kørsel tager ca. 3 minutter, fordi databasen ligger i skyen.
+En hel kørsel tager ca. 7-8 minutter, fordi databasen ligger i skyen. Testsættet i `evals/` er
+noget andet: det kalder den rigtige Claude og køres kun, når du selv starter det.
 
 ## Sikkerhed
 
@@ -369,15 +424,16 @@ review-assistant/
     │   ├── main.py              # Selve appen: samler routes, sikkerhed og opstart
     │   ├── __main__.py          # Startknap: uv run python -m app
     │   ├── admin.py             # Vores værktøj til at oprette kunder (uv run python -m app.admin)
-    │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate
+    │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate, reply_settings
     │   ├── schemas/             # Tjekker og former data ind og ud
-    │   ├── services/            # Claude, Google Places og login (adgangskoder, sessioner)
-    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens, usage)
+    │   ├── services/            # Claude (udkast og profil fra hjemmeside), Google Places, mail, lofter og login
+    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens, usage, reply_settings)
     │   ├── db/
     │   │   ├── pool.py          # Forbindelsen til databasen
     │   │   ├── migrate.py       # Migrations-runner
-    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug)
+    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug), 006_reply_profiles.sql (indstillinger for svar)
     │   └── core/                # Indstillinger, fejl, sikkerhed, grænser og "hvem er logget ind"
+    ├── evals/                   # Testsæt: sammenlign udkast side om side (uv run python -m evals.compare)
     └── tests/                   # uv run pytest
 ```
 
@@ -402,3 +458,8 @@ ved serveren ud fra login, og den kan aldrig angives i kaldet.
 | `POST` | `/api/generate` | Genererer udkast med Claude for de valgte anmeldelser og gemmer dem i `replies`. |
 | `POST` | `/api/reviews/{id}/send` | Gemmer den tekst der faktisk blev sendt, og markerer anmeldelsen besvaret. |
 | `POST` | `/api/reviews/{id}/answered` | Markerer besvaret uden at gemme en tekst (svaret blev givet på Google). |
+| `GET` | `/api/reply-settings` | Caféens indstillinger for svar, Claudes eventuelle forslag og status for profilen. |
+| `PUT` | `/api/reply-settings` | Gemmer indstillingerne. At gemme fakta godkender dem. |
+| `POST` | `/api/reply-settings/profile` | Starter "Lav forslag fra jeres hjemmeside" i baggrunden (svarer 202 med det samme). |
+| `DELETE` | `/api/reply-settings/suggestion` | Kasserer Claudes forslag til fakta om stedet. |
+| `POST` | `/api/generate/preview` | "Prøv et udkast": ét udkast med indstillingerne fra siden (også ugemte). Gemmes ikke. |

@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -27,6 +27,29 @@ PLACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,300}$")
 
 # Google sender højst 5 anmeldelser. Loftet er kun en sikring, hvis det ændrer sig.
 MAX_REVIEWS = 10
+
+MAX_WEBSITE_LENGTH = 500
+
+
+def clean_website(value: Any) -> str | None:
+    """Giver en hjemmeside-adresse tilbage, hvis den ligner en rigtig hjemmeside. Ellers None.
+
+    Adressen kommer fra Google og bruges senere, når Claude læser hjemmesiden. Vi tager kun
+    imod http(s), et rigtigt domænenavn (med punktum) og ingen brugernavn/adgangskode i adressen.
+    """
+    if not isinstance(value, str):
+        return None
+    url = value.strip()
+    if not url or len(url) > MAX_WEBSITE_LENGTH:
+        return None
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
+    host = parts.hostname or ""
+    if parts.scheme not in ("http", "https") or "." not in host or parts.username or parts.password:
+        return None
+    return url
 
 
 def is_valid_place_id(place_id: str) -> bool:
@@ -63,6 +86,7 @@ class PlaceDetails:
     rating: float | None
     user_rating_count: int | None
     reviews: list[GoogleReview]
+    website: str | None = None
 
 
 def _as_dict(value: Any) -> dict:
@@ -132,6 +156,7 @@ def _to_place_details(data: dict) -> PlaceDetails:
         address=_text(data.get("formattedAddress")),
         rating=float(rating) if isinstance(rating, (int, float)) and not isinstance(rating, bool) else None,
         user_rating_count=count if isinstance(count, int) and not isinstance(count, bool) else None,
+        website=clean_website(data.get("websiteUri")),
         # Anmeldelser uden id springes over: vi kunne ikke genkende dem næste gang.
         reviews=[r for r in reviews if r.external_id],
     )
@@ -211,7 +236,15 @@ async def get_place_details(client: httpx.AsyncClient, place_id: str, api_key: s
         params={"languageCode": "da"},
         headers={
             "X-Goog-Api-Key": api_key,
-            "X-Goog-FieldMask": "id,displayName,formattedAddress,rating,userRatingCount,reviews",
+            "X-Goog-FieldMask": "id,displayName,formattedAddress,rating,userRatingCount,reviews,websiteUri",
         },
     )
-    return _to_place_details(data)
+    details = _to_place_details(data)
+    if not details.reviews and (details.user_rating_count or 0) > 0:
+        # Stedet HAR anmeldelser, men Google sendte ingen. Det er Googles side, ikke vores parsing,
+        # så det skrives i loggen, så det kan opdages.
+        logger.warning(
+            "Google sendte 0 anmeldelser for et sted med %s anmeldelser (place_id %s)",
+            details.user_rating_count, place_id,
+        )
+    return details

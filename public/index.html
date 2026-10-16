@@ -151,6 +151,127 @@
   #pwPanel form { display: grid; gap: 10px; max-width: 360px; margin-top: 10px; }
   #pwPanel summary { cursor: pointer; font-size: 13px; }
   .ok { color: var(--success); font-size: 13px; margin: 6px 0; }
+
+  /* ---- Indstillingssiden: følger DESIGN_savvycal.md (Cream Paper-zonen) ----------------
+     Alt er afgrænset under .sv, så dashboardets mørke tema ikke påvirkes. Farver, typografi,
+     afstande og radier er tokens fra designfilen. GT-skrifterne er licenserede og hentes ikke
+     udefra (CSP), så de fallback-skrifter, filen selv angiver, bruges. */
+  .sv {
+    --color-lime-sprout: #b9ff78;
+    --color-ember-coral: #f54320;
+    --color-coral-whisper: #ffe3e3;
+    --color-cream-paper: #fcf7ed;
+    --color-true-black: #000000;
+    --color-midnight-ink: #1c1917;
+    --color-stone: #44403b;
+    --color-slate: #292524;
+    --color-ash: #d6d3d1;
+    --color-fog: #e5e7eb;
+    --color-pure-white: #ffffff;
+    --color-moss: #008236;
+    --font-gt-alpina-condensed: 'GT Alpina Condensed', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-gt-america-standard: 'GT America Standard', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-gt-america-extended: 'GT America Extended', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-gt-america-condensed: 'GT America Condensed', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --radius-cards: 8px;
+    --radius-buttons: 8px;
+    --radius-pills: 9999px;
+
+    position: fixed; inset: 0; z-index: 10; overflow-y: auto;
+    background: var(--color-cream-paper);
+    color: var(--color-stone);
+    font-family: var(--font-gt-america-standard);
+    font-size: 16px; line-height: 1.5; letter-spacing: -0.007em;
+    font-feature-settings: "cv11";
+  }
+  .sv-wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 0; }
+  .sv-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 48px; }
+  .sv-cafe { color: var(--color-slate); font-size: 14px; }
+  .sv-eyebrow {
+    font-family: var(--font-gt-america-condensed); font-size: 18px; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--color-midnight-ink); margin: 0 0 16px;
+  }
+  .sv-title {
+    font-family: var(--font-gt-alpina-condensed); font-weight: 700; font-size: 38px; line-height: 1.08;
+    color: var(--color-true-black); margin: 0 0 16px;
+  }
+  .sv-lead { margin: 0 0 48px; max-width: 640px; }
+  .sv-card {
+    background: var(--color-pure-white); border: 1px solid var(--color-fog); border-radius: var(--radius-cards);
+    padding: 24px; margin-bottom: 24px;
+  }
+  .sv-card h2 { font-size: 24px; line-height: 1.33; font-weight: 700; color: var(--color-midnight-ink); margin: 0 0 8px; }
+  .sv-card > p { margin: 0 0 24px; font-size: 14px; line-height: 1.43; }
+  .sv-field { margin-bottom: 24px; }
+  .sv-field:last-child { margin-bottom: 0; }
+  .sv-field > label, .sv-legend {
+    display: block; font-family: var(--font-gt-america-extended); font-size: 14px; font-weight: 700;
+    color: var(--color-slate); margin-bottom: 8px; padding: 0;
+  }
+  .sv-help { font-size: 14px; line-height: 1.43; margin: -4px 0 8px; }
+  .sv input[type="text"], .sv textarea, .sv select {
+    width: 100%; background: var(--color-pure-white); color: var(--color-midnight-ink);
+    border: 1px solid var(--color-fog); border-radius: var(--radius-buttons);
+    padding: 8px 16px; font: inherit; font-size: 16px;
+  }
+  .sv textarea { min-height: 96px; resize: vertical; }
+  .sv input[type="text"]:focus, .sv textarea:focus, .sv select:focus {
+    outline: none; border-color: var(--color-midnight-ink); box-shadow: 0 0 0 4px rgba(185, 255, 120, 0.25);
+  }
+  .sv fieldset { border: 0; margin: 0 0 24px; padding: 0; }
+  .sv-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sv-pills label {
+    font-family: var(--font-gt-america-extended); font-size: 14px; color: var(--color-true-black);
+    border: 1px solid var(--color-ash); border-radius: var(--radius-pills); padding: 4px 16px; cursor: pointer;
+  }
+  .sv-pills input { position: absolute; opacity: 0; pointer-events: none; }
+  .sv-pills input:checked + span { font-weight: 700; }
+  .sv-pills label:has(input:checked) { background: var(--color-lime-sprout); border-color: var(--color-lime-sprout); color: var(--color-midnight-ink); }
+  .sv-pills label:has(input:focus-visible) { box-shadow: 0 0 0 4px rgba(185, 255, 120, 0.25); }
+  .sv-btn, .sv-ghost {
+    font-family: var(--font-gt-america-extended); font-size: 16px; border-radius: var(--radius-buttons);
+    padding: 12px 24px; cursor: pointer; line-height: 1;
+  }
+  .sv-btn { background: var(--color-lime-sprout); color: var(--color-midnight-ink); border: 1.5px solid var(--color-lime-sprout); }
+  .sv-btn:hover:not(:disabled) { filter: brightness(0.96); box-shadow: 0 0 0 4px rgba(185, 255, 120, 0.25); }
+  .sv-ghost { background: transparent; color: var(--color-midnight-ink); border: 1.5px solid var(--color-midnight-ink); }
+  .sv-ghost:hover:not(:disabled) { background: var(--color-midnight-ink); color: var(--color-cream-paper); }
+  .sv-btn:disabled, .sv-ghost:disabled { border-color: var(--color-ash); background: transparent; color: var(--color-ash); cursor: not-allowed; }
+  .sv-small { padding: 8px 16px; font-size: 14px; }
+  .sv-x {
+    background: transparent; border: 0; color: var(--color-midnight-ink); cursor: pointer;
+    font-size: 16px; line-height: 1; padding: 0 0 0 8px;
+  }
+  .sv-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .sv-row input[type="text"] { flex: 1; min-width: 200px; }
+  .sv-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .sv-chip {
+    display: inline-flex; align-items: center; background: var(--color-pure-white); color: var(--color-midnight-ink);
+    border: 1px solid var(--color-ash); border-radius: var(--radius-pills); padding: 4px 8px 4px 16px; font-size: 14px;
+  }
+  .sv-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 8px; }
+  .sv-list li { display: flex; gap: 8px; align-items: center; }
+  .sv-list li input[type="text"] { flex: 1; }
+  .sv-empty { font-size: 14px; margin: 0 0 8px; }
+  .sv-suggestion { background: var(--color-coral-whisper); border-radius: var(--radius-cards); padding: 24px; margin-top: 24px; }
+  .sv-suggestion h3 { font-size: 20px; line-height: 1.5; color: var(--color-midnight-ink); margin: 0 0 8px; }
+  .sv-suggestion h4 { font-family: var(--font-gt-america-extended); font-size: 14px; color: var(--color-slate); margin: 16px 0 8px; }
+  .sv-pick { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .sv-pick input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--color-midnight-ink); flex: none; }
+  .sv-pick input[type="text"] { flex: 1; }
+  .sv-note { font-size: 14px; line-height: 1.43; }
+  .sv-msg { font-size: 14px; line-height: 1.43; margin: 0; }
+  .sv-msg.ok { color: var(--color-moss); }
+  .sv-msg.err { background: var(--color-coral-whisper); color: var(--color-midnight-ink); border-radius: var(--radius-cards); padding: 8px 16px; }
+  .sv-preview-out {
+    white-space: pre-wrap; color: var(--color-midnight-ink); border: 1px solid var(--color-fog);
+    border-radius: var(--radius-cards); padding: 16px 24px; margin-top: 16px;
+  }
+  .sv-savebar {
+    position: sticky; bottom: 0; background: var(--color-cream-paper); border-top: 1px solid var(--color-fog);
+    padding: 16px 0; margin-top: 48px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+  }
+  .sv-savebar .sv-msg { flex: 1; min-width: 200px; }
 </style>
 </head>
 <body>
@@ -215,6 +336,7 @@
       <h1 id="cafeName">Stamgæst</h1>
       <div class="who">
         <span id="userEmail"></span>
+        <button class="linkbtn" id="settingsBtn" type="button">Indstillinger for svar</button>
         <button class="linkbtn" id="logoutBtn" type="button">Log ud</button>
       </div>
     </div>
@@ -231,14 +353,6 @@
     </details>
 
     <div class="setup">
-      <div class="field">
-        <label for="tone">Tone i svarene</label>
-        <select id="tone">
-          <option value="venligt og professionelt">Venligt og professionelt</option>
-          <option value="afslappet og personligt">Afslappet og personligt</option>
-          <option value="formelt">Formelt</option>
-        </select>
-      </div>
       <div class="field refresh">
         <button id="refreshBtn" type="button">Hent seneste anmeldelser</button>
         <div class="send-note" id="lastFetched"></div>
@@ -276,6 +390,121 @@
     <div id="emptyState" class="empty" hidden></div>
   </div>
 
+</div>
+
+<!-- Indstillinger for svar (egen side, følger DESIGN_savvycal.md) -->
+<div id="settingsView" class="sv" hidden>
+  <form class="sv-wrap" id="svForm" autocomplete="off" novalidate>
+    <div class="sv-top">
+      <button class="sv-ghost sv-small" id="svBack" type="button">← Til anmeldelserne</button>
+      <span class="sv-cafe" id="svCafe"></span>
+    </div>
+
+    <p class="sv-eyebrow">Indstillinger for svar</p>
+    <h1 class="sv-title">Svar, der lyder som jer</h1>
+    <p class="sv-lead">Alt, I skriver her, bruges til at forme jeres svar. Jo mere info, jo bedre svar.</p>
+
+    <section class="sv-card" aria-labelledby="svStyleTitle">
+      <h2 id="svStyleTitle">Stil</h2>
+      <p>Hvordan svarene skal lyde.</p>
+      <fieldset>
+        <legend class="sv-legend">Længde</legend>
+        <div class="sv-pills" id="svLength">
+          <label><input type="radio" name="svLength" value="auto" /><span>Automatisk</span></label>
+          <label><input type="radio" name="svLength" value="meget_kort" /><span>Meget kort</span></label>
+          <label><input type="radio" name="svLength" value="kort" /><span>Kort</span></label>
+          <label><input type="radio" name="svLength" value="mellem" /><span>Mellem</span></label>
+          <label><input type="radio" name="svLength" value="lang" /><span>Lang</span></label>
+        </div>
+        <p class="sv-note" id="svLengthNote" style="margin:8px 0 0;"></p>
+      </fieldset>
+      <div class="sv-field">
+        <label for="svTone">Beskriv jeres tone med egne ord</label>
+        <input type="text" id="svTone" maxlength="200" placeholder="Fx: uformel og lidt fræk, rock'n'roll" />
+      </div>
+      <div class="sv-field">
+        <label for="svSignature">Underskrift</label>
+        <p class="sv-help">Står under hvert svar.</p>
+        <input type="text" id="svSignature" maxlength="150" placeholder="Fx: Skål! Holdet på Warpigs" />
+      </div>
+      <div class="sv-field">
+        <label for="svAvoid">Det må aldrig skrives</label>
+        <textarea id="svAvoid" maxlength="600" placeholder="Fx: Nævn aldrig rabatter, gratis øl eller kompensation"></textarea>
+      </div>
+      <div class="sv-field">
+        <label for="svContact">Hvor kan utilfredse gæster kontakte jer?</label>
+        <input type="text" id="svContact" maxlength="200" placeholder="Fx: skriv til hej@jeressted.dk" />
+      </div>
+    </section>
+
+    <section class="sv-card" aria-labelledby="svAboutTitle">
+      <h2 id="svAboutTitle">Om stedet</h2>
+      <p>Bruges kun til at kommentere det, gæsten selv nævner, fx en ret de roser. Skriv ikke priser eller åbningstider.</p>
+      <div class="sv-field">
+        <label for="svConcept">Koncept</label>
+        <textarea id="svConcept" maxlength="300" style="min-height:64px;" placeholder="Fx: Texas-style BBQ og eget bryggeri"></textarea>
+      </div>
+      <div class="sv-field">
+        <label for="svItemInput">Retter og drikke</label>
+        <div class="sv-chips" id="svItems"></div>
+        <div class="sv-row">
+          <input type="text" id="svItemInput" maxlength="80" placeholder="Tilføj ret/drik" />
+          <button class="sv-ghost sv-small" id="svItemAdd" type="button">Tilføj</button>
+        </div>
+      </div>
+      <div class="sv-field">
+        <label for="svTraitInput">Kendetegn</label>
+        <ul class="sv-list" id="svTraits"></ul>
+        <div class="sv-row">
+          <input type="text" id="svTraitInput" maxlength="150" placeholder="Fx: Kødet røges i 12-14 timer" />
+          <button class="sv-ghost sv-small" id="svTraitAdd" type="button">Tilføj</button>
+        </div>
+      </div>
+      <div class="sv-field">
+        <label for="svAtmosphere">Stemning</label>
+        <input type="text" id="svAtmosphere" maxlength="300" placeholder="Fx: Industrielt miljø i en gammel slagtehal" />
+      </div>
+      <div class="sv-row" style="margin-top:24px;">
+        <button class="sv-ghost sv-small" id="svBuild" type="button">Lav forslag fra jeres hjemmeside</button>
+        <span class="sv-note" id="svWebsite"></span>
+      </div>
+      <p class="sv-note" id="svStatus" role="status" style="margin:8px 0 0;"></p>
+      <div class="sv-suggestion" id="svSuggestion" hidden>
+        <h3>Forslag fra hjemmesiden</h3>
+        <p class="sv-note" style="margin:0;">Sæt flueben ved det, der skal med. Du kan rette teksten i hvert punkt.</p>
+        <div id="svSuggestionList"></div>
+        <div class="sv-row" style="margin-top:16px;">
+          <button class="sv-btn" id="svAddSelected" type="button">Tilføj valgte</button>
+          <button class="sv-ghost" id="svDiscard" type="button">Kassér forslaget</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="sv-card" aria-labelledby="svExamplesTitle">
+      <h2 id="svExamplesTitle">Eksempler</h2>
+      <p>Indsæt 3-5 svar, I selv har skrevet og er glade for, fx fra jeres Google-profil. Svarene rammer jeres stemme, men kopierer ikke sætninger. De svar, I sender gennem Stamgæst, bruges også automatisk.</p>
+      <div class="sv-field">
+        <label for="svExamples">Jeres egne svar</label>
+        <textarea id="svExamples" maxlength="3000" style="min-height:160px;"></textarea>
+      </div>
+    </section>
+
+    <section class="sv-card" aria-labelledby="svPreviewTitle">
+      <h2 id="svPreviewTitle">Prøv et udkast</h2>
+      <p>Se, hvordan et svar bliver med det, der står på siden lige nu, også før du gemmer. Tæller som et udkast.</p>
+      <div class="sv-field">
+        <label for="svPreviewReview">Anmeldelse</label>
+        <select id="svPreviewReview"></select>
+      </div>
+      <button class="sv-ghost sv-small" id="svPreviewBtn" type="button">Lav prøve-udkast</button>
+      <div class="sv-preview-out" id="svPreviewOut" hidden></div>
+    </section>
+
+    <div class="sv-savebar">
+      <p class="sv-msg" id="svMessage" role="alert"></p>
+      <button class="sv-btn" id="svSave" type="submit">Gem indstillinger</button>
+    </div>
+  </form>
 </div>
 
 <script>
@@ -340,6 +569,7 @@
     $("appView").hidden = true;
     $("forgotView").hidden = true;
     $("resetView").hidden = true;
+    clearSettings();
     $("loginView").hidden = false;
     $("loginError").className = "error";
     $("loginError").textContent = message || "";
@@ -350,6 +580,7 @@
     $("loginView").hidden = true;
     $("forgotView").hidden = true;
     $("resetView").hidden = true;
+    $("settingsView").hidden = true;
     $("appView").hidden = false;
     $("cafeName").textContent = me.businessName || "Stamgæst";
     $("userEmail").textContent = me.email;
@@ -489,6 +720,396 @@
     }
   });
 
+  // ---- Indstillinger for svar (egen side) ---------------------------------------
+  //
+  // Alt fra serveren (fakta, forslag, anmeldelser) sættes ind med textContent eller .value,
+  // aldrig som HTML. Lofterne på længde og antal står også på serveren, som renser alt igen.
+
+  const SV_TEXT_FIELDS = { tone: "svTone", signature: "svSignature", avoid: "svAvoid", contact: "svContact", examples: "svExamples" };
+  const SV_MAX_ITEMS = 20;
+  const SV_MAX_TRAITS = 12;
+  const SV_POLL_MS = 3000;
+  const SV_POLL_MAX = 80; // ca. 4 minutter, så siden aldrig spørger i det uendelige
+  const SV_LENGTH_NOTES = {
+    auto: "Længden tilpasses: en kort anmeldelse får et kort svar, en lang eller negativ et grundigere.",
+    meget_kort: "1-2 sætninger.",
+    kort: "2-3 sætninger.",
+    mellem: "3-5 sætninger.",
+    lang: "5-7 sætninger.",
+  };
+
+  let svItems = [];        // retter og drikke, som de står på siden lige nu
+  let svSuggestion = null; // Claudes forslag (bruges aldrig, før ejeren har valgt fra det)
+  let svDirty = false;     // er der ændringer, der ikke er gemt?
+  let svPollTimer = null;
+  let svPolls = 0;
+
+  const svKey = (text) => text.trim().toLocaleLowerCase("da-DK");
+
+  function svMessage(text, ok) {
+    $("svMessage").className = "sv-msg" + (text ? (ok ? " ok" : " err") : "");
+    $("svMessage").textContent = text || "";
+  }
+
+  // ---- Retter og drikke (mærkater) og kendetegn (liste) ----
+
+  function renderItems() {
+    const box = $("svItems");
+    box.replaceChildren();
+    if (!svItems.length) {
+      const empty = document.createElement("p");
+      empty.className = "sv-empty";
+      empty.textContent = "Ingen endnu.";
+      box.append(empty);
+    }
+    svItems.forEach((item, index) => {
+      const chip = document.createElement("span");
+      chip.className = "sv-chip";
+      chip.append(item);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "sv-x";
+      remove.textContent = "✕";
+      remove.setAttribute("aria-label", "Fjern " + item);
+      remove.addEventListener("click", () => { svItems.splice(index, 1); svDirty = true; renderItems(); });
+      chip.append(remove);
+      box.append(chip);
+    });
+  }
+
+  function addTraitRow(text) {
+    const li = document.createElement("li");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 150;
+    input.value = text;
+    input.setAttribute("aria-label", "Kendetegn");
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "sv-x";
+    remove.textContent = "✕";
+    remove.setAttribute("aria-label", "Fjern kendetegn");
+    remove.addEventListener("click", () => { li.remove(); svDirty = true; });
+    li.append(input, remove);
+    $("svTraits").append(li);
+  }
+
+  const currentTraits = () => [...$("svTraits").querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean);
+
+  function addItem(text) {
+    const value = text.trim().slice(0, 80);
+    if (!value) return true;
+    if (svItems.some(i => svKey(i) === svKey(value))) return true;
+    if (svItems.length >= SV_MAX_ITEMS) { svMessage(`Der kan højst være ${SV_MAX_ITEMS} retter og drikke.`); return false; }
+    svItems.push(value);
+    return true;
+  }
+
+  function addTrait(text) {
+    const value = text.trim().slice(0, 150);
+    if (!value) return true;
+    const traits = currentTraits();
+    if (traits.some(t => svKey(t) === svKey(value))) return true;
+    if (traits.length >= SV_MAX_TRAITS) { svMessage(`Der kan højst være ${SV_MAX_TRAITS} kendetegn.`); return false; }
+    addTraitRow(value);
+    return true;
+  }
+
+  $("svItemAdd").addEventListener("click", () => {
+    if (addItem($("svItemInput").value)) $("svItemInput").value = "";
+    svDirty = true;
+    renderItems();
+  });
+  $("svItemInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); $("svItemAdd").click(); }
+  });
+  $("svTraitAdd").addEventListener("click", () => {
+    if (addTrait($("svTraitInput").value)) $("svTraitInput").value = "";
+    svDirty = true;
+  });
+  $("svTraitInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); $("svTraitAdd").click(); }
+  });
+
+  // ---- Udfyld og saml siden ----
+
+  function fillSettings(s) {
+    for (const [key, id] of Object.entries(SV_TEXT_FIELDS)) $(id).value = s[key] ?? "";
+    const length = document.querySelector(`input[name="svLength"][value="${CSS.escape(s.replyLength || "auto")}"]`);
+    (length || document.querySelector('input[name="svLength"][value="auto"]')).checked = true;
+    showLengthNote();
+    $("svConcept").value = s.about.concept || "";
+    $("svAtmosphere").value = s.about.atmosphere || "";
+    svItems = [...(s.about.items || [])];
+    renderItems();
+    $("svTraits").replaceChildren();
+    (s.about.traits || []).forEach(addTraitRow);
+    svDirty = false;
+    showProfileState(s);
+  }
+
+  function collectSettings() {
+    const body = { replyLength: document.querySelector('input[name="svLength"]:checked')?.value || "auto" };
+    for (const [key, id] of Object.entries(SV_TEXT_FIELDS)) body[key] = $(id).value;
+    body.about = {
+      concept: $("svConcept").value,
+      items: [...svItems],
+      traits: currentTraits(),
+      atmosphere: $("svAtmosphere").value,
+    };
+    return body;
+  }
+
+  function showLengthNote() {
+    const value = document.querySelector('input[name="svLength"]:checked')?.value || "auto";
+    $("svLengthNote").textContent = SV_LENGTH_NOTES[value] || "";
+  }
+  document.querySelectorAll('input[name="svLength"]').forEach(r => r.addEventListener("change", showLengthNote));
+  // Kun ændringer i selve indstillingerne tæller, ikke valg i "Prøv et udkast" eller i forslaget.
+  $("settingsView").addEventListener("input", (e) => {
+    if (!e.target.closest("#svPreviewReview, #svSuggestion")) svDirty = true;
+  });
+
+  async function saveSettings({ clearSuggestion = false, okText } = {}) {
+    svMessage("");
+    $("svSave").disabled = true;
+    try {
+      const saved = await api("PUT", "/api/reply-settings", { ...collectSettings(), clearSuggestion });
+      fillSettings(saved);
+      svMessage(okText || "Gemt. Nye udkast bruger indstillingerne.", true);
+      return true;
+    } catch (err) {
+      svMessage(err.message);
+      return false;
+    } finally {
+      $("svSave").disabled = false;
+    }
+  }
+
+  $("svForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    saveSettings();
+  });
+
+  // ---- Forslag fra hjemmesiden ----
+
+  function showProfileState(s) {
+    $("svWebsite").textContent = s.websiteUrl
+      ? "Hjemmeside fra Google: " + s.websiteUrl
+      : "Google har ingen hjemmeside for jer, så skriv selv.";
+    const building = s.profileStatus === "building";
+    $("svBuild").disabled = !s.websiteUrl || building;
+    $("svStatus").textContent = building
+      ? "Vi læser jeres hjemmeside. Det tager typisk under et minut ..."
+      : (s.aboutSuggestion ? "" : (s.profileMessage || ""));
+    svSuggestion = s.aboutSuggestion || null;
+    renderSuggestion();
+    if (building) scheduleProfilePoll(); else stopProfilePoll();
+  }
+
+  // Ét punkt i forslaget: flueben og en tekst, der kan rettes.
+  function pickRow(kind, text) {
+    const row = document.createElement("label");
+    row.className = "sv-pick";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = true;
+    box.dataset.kind = kind;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = text;
+    input.maxLength = { item: 80, trait: 150 }[kind] || 300;
+    input.dataset.kind = kind;
+    row.append(box, input);
+    return row;
+  }
+
+  // Viser kun det, der er NYT i forhold til det, der allerede står på siden.
+  function renderSuggestion() {
+    const list = $("svSuggestionList");
+    list.replaceChildren();
+    if (!svSuggestion) { $("svSuggestion").hidden = true; return; }
+
+    const known = new Set([...svItems, ...currentTraits()].map(svKey));
+    const groups = [
+      ["Koncept", "concept", svSuggestion.concept && svKey(svSuggestion.concept) !== svKey($("svConcept").value) ? [svSuggestion.concept] : []],
+      ["Retter og drikke", "item", (svSuggestion.items || []).filter(i => !known.has(svKey(i)))],
+      ["Kendetegn", "trait", (svSuggestion.traits || []).filter(t => !known.has(svKey(t)))],
+      ["Stemning", "atmosphere", svSuggestion.atmosphere && svKey(svSuggestion.atmosphere) !== svKey($("svAtmosphere").value) ? [svSuggestion.atmosphere] : []],
+    ];
+    let count = 0;
+    for (const [title, kind, values] of groups) {
+      if (!values.length) continue;
+      const heading = document.createElement("h4");
+      heading.textContent = title;
+      list.append(heading);
+      values.forEach(v => list.append(pickRow(kind, v)));
+      count += values.length;
+    }
+    if (!count) {
+      const none = document.createElement("p");
+      none.className = "sv-note";
+      none.textContent = "Forslaget indeholder ikke noget, I ikke allerede har. Kassér det, eller lav et nyt.";
+      list.append(none);
+    }
+    $("svAddSelected").disabled = !count;
+    $("svSuggestion").hidden = false;
+  }
+
+  $("svAddSelected").addEventListener("click", async () => {
+    let full = false;
+    for (const box of $("svSuggestionList").querySelectorAll('input[type="checkbox"]:checked')) {
+      const text = box.nextElementSibling.value.trim();
+      if (!text) continue;
+      const kind = box.dataset.kind;
+      if (kind === "concept") $("svConcept").value = text.slice(0, 300);
+      else if (kind === "atmosphere") $("svAtmosphere").value = text.slice(0, 300);
+      else if (kind === "item") full = !addItem(text) || full;
+      else if (kind === "trait") full = !addTrait(text) || full;
+    }
+    renderItems();
+    const ok = await saveSettings({
+      clearSuggestion: true,
+      okText: "De valgte punkter er tilføjet og gemt. Nye udkast bruger dem.",
+    });
+    if (ok && full) svMessage("Gemt, men ikke alt kom med, fordi der var nået det maksimale antal punkter.", true);
+  });
+
+  $("svDiscard").addEventListener("click", async () => {
+    try {
+      await api("DELETE", "/api/reply-settings/suggestion");
+      svSuggestion = null;
+      renderSuggestion();
+      $("svStatus").textContent = "";
+    } catch (err) {
+      svMessage(err.message);
+    }
+  });
+
+  $("svBuild").addEventListener("click", async () => {
+    svMessage("");
+    $("svBuild").disabled = true;
+    try {
+      await api("POST", "/api/reply-settings/profile", {});
+      showProfileState(await api("GET", "/api/reply-settings"));
+    } catch (err) {
+      svMessage(err.message);
+      $("svBuild").disabled = false;
+    }
+  });
+
+  function scheduleProfilePoll() {
+    if (svPollTimer) return;
+    svPollTimer = setTimeout(async () => {
+      svPollTimer = null;
+      if (++svPolls > SV_POLL_MAX) {
+        $("svStatus").textContent = "Det tager længere tid end ventet. Kom tilbage til siden om lidt.";
+        return;
+      }
+      try {
+        // Kun status og forslag opdateres, så intet af det, ejeren er ved at skrive, overskrives.
+        showProfileState(await api("GET", "/api/reply-settings"));
+      } catch (err) {
+        $("svStatus").textContent = err.message;
+      }
+    }, SV_POLL_MS);
+  }
+
+  function stopProfilePoll() {
+    clearTimeout(svPollTimer);
+    svPollTimer = null;
+    svPolls = 0;
+  }
+
+  // ---- Prøv et udkast ----
+
+  function fillPreviewReviews() {
+    const select = $("svPreviewReview");
+    select.replaceChildren();
+    for (const r of reviews) {
+      const option = document.createElement("option");
+      option.value = r.id;
+      const text = (r.reviewText || "(ingen tekst)").replace(/\s+/g, " ");
+      option.textContent = `${starString(r.rating || 0)}  ${r.reviewerName || "Anonym"}: ${text.slice(0, 70)}${text.length > 70 ? " ..." : ""}`;
+      select.append(option);
+    }
+    $("svPreviewBtn").disabled = !reviews.length;
+    if (!reviews.length) {
+      const option = document.createElement("option");
+      option.textContent = "Hent anmeldelser først";
+      select.append(option);
+    }
+  }
+
+  $("svPreviewBtn").addEventListener("click", async () => {
+    const out = $("svPreviewOut");
+    const btn = $("svPreviewBtn");
+    btn.disabled = true;
+    btn.textContent = "Skriver udkast ...";
+    svMessage("");
+    try {
+      const data = await api("POST", "/api/generate/preview", {
+        reviewId: $("svPreviewReview").value,
+        settings: collectSettings(),
+      });
+      out.textContent = data.draft;
+      out.hidden = false;
+    } catch (err) {
+      svMessage(err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Lav prøve-udkast";
+    }
+  });
+
+  // ---- Skift mellem dashboard og indstillinger ----
+
+  async function showSettings() {
+    svMessage("");
+    $("svPreviewOut").hidden = true;
+    $("svCafe").textContent = $("cafeName").textContent;
+    fillPreviewReviews();
+    $("appView").hidden = true;
+    $("settingsView").hidden = false;
+    $("settingsView").scrollTop = 0;
+    try {
+      fillSettings(await api("GET", "/api/reply-settings"));
+    } catch (err) {
+      svMessage(err.message);
+    }
+  }
+
+  function leaveSettings() {
+    if (svDirty && !confirm("Du har ændringer, der ikke er gemt. Gå tilbage alligevel?")) return;
+    stopProfilePoll();
+    $("settingsView").hidden = true;
+    $("appView").hidden = false;
+  }
+
+  // Ved log ud: fjern alt, så den næste bruger på samme computer ikke ser det.
+  function clearSettings() {
+    stopProfilePoll();
+    svItems = [];
+    svSuggestion = null;
+    svDirty = false;
+    $("svForm").reset();
+    $("svItems").replaceChildren();
+    $("svTraits").replaceChildren();
+    $("svSuggestionList").replaceChildren();
+    $("svSuggestion").hidden = true;
+    $("svPreviewReview").replaceChildren();
+    $("svPreviewOut").textContent = "";
+    $("svPreviewOut").hidden = true;
+    $("svStatus").textContent = "";
+    $("svWebsite").textContent = "";
+    $("svCafe").textContent = "";
+    svMessage("");
+    $("settingsView").hidden = true;
+  }
+
+  $("settingsBtn").addEventListener("click", showSettings);
+  $("svBack").addEventListener("click", leaveSettings);
+
   // ---- Anmeldelser ------------------------------------------------------------
 
   // Ét sted der tager et serversvar og gør det til appens tilstand — bruges både når
@@ -496,9 +1117,6 @@
   function applyDashboard(data) {
     reviews = data.reviews;
     $("cafeName").textContent = data.businessName || "Stamgæst";
-    if (data.defaultTone && [...$("tone").options].some(o => o.value === data.defaultTone)) {
-      $("tone").value = data.defaultTone;
-    }
     $("lastFetched").textContent = data.reviewsFetchedAt
       ? "Sidst hentet: " + new Date(data.reviewsFetchedAt).toLocaleString("da-DK")
       : "Anmeldelser er ikke hentet endnu.";
@@ -518,7 +1136,9 @@
       const before = reviews.length;
       // Serveren ved selv hvilken café det gælder, ud fra dit login.
       applyDashboard(await api("POST", "/api/reviews/refresh", {}));
-      if (reviews.length === before) {
+      if (reviews.length === 0) {
+        errorDiv.textContent = "Google sendte ingen anmeldelser for jeres sted. Prøv igen senere.";
+      } else if (reviews.length === before) {
         errorDiv.textContent = "Ingen nye anmeldelser at hente (de var allerede gemt).";
       }
     } catch (err) {
@@ -716,10 +1336,9 @@
     btn.textContent = "Genererer...";
 
     try {
-      // Kun id'er og tone sendes. Anmeldelsens tekst og caféens navn læser serveren selv
-      // fra databasen, og hvilken café det gælder ved den ud fra dit login.
+      // Kun id'er sendes. Anmeldelsens tekst, caféens navn og indstillinger for svar læser
+      // serveren selv fra databasen, og hvilken café det gælder ved den ud fra dit login.
       const data = await api("POST", "/api/generate", {
-        tone: $("tone").value,
         reviews: toGenerate.map(r => ({ id: r.id })),
       });
 

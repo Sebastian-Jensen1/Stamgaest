@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import Field
 
 from app.schemas.common import CamelModel
+from app.schemas.reply_settings import ReplySettingsIn
 
 # Hver anmeldelse er et betalt kald til Claude, så et enkelt kald må ikke kunne
 # bede om ubegrænset mange.
@@ -29,10 +30,9 @@ class GenerateRequest(CamelModel):
     """Det browseren sender til /api/generate.
 
     Der er bevidst hverken café-navn eller café-id her. Hvilken café det gælder, ved serveren
-    ud fra login, og navnet står i databasen.
+    ud fra login, og navnet står i databasen. Tonen står i caféens indstillinger.
     """
 
-    tone: str = Field(default="", max_length=100)
     reviews: list[GenerateReview] = Field(min_length=1, max_length=MAX_REVIEWS_PER_REQUEST)
 
 
@@ -51,3 +51,16 @@ class GenerateResponse(CamelModel):
     """Det /api/generate svarer med: en liste af udkast."""
 
     results: list[GenerateResult]
+
+
+class PreviewRequest(CamelModel):
+    """"Prøv et udkast": én af caféens anmeldelser og indstillingerne, som de står på siden."""
+
+    review_id: UUID
+    settings: ReplySettingsIn
+
+
+class PreviewResponse(CamelModel):
+    """Prøve-udkastet. Det gemmes ikke."""
+
+    draft: str

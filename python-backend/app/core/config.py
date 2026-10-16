@@ -38,6 +38,8 @@ class Caps:
 DEFAULT_DRAFT_CAPS = Caps(cafe_day=100, cafe_month=1000, all_day=1000, all_month=10000)
 # Hentninger fra Google Places (hver er ét betalt kald).
 DEFAULT_FETCH_CAPS = Caps(cafe_day=20, cafe_month=300, all_day=200, all_month=3000)
+# "Byg profil fra hjemmesiden": Claude læser hjemmesiden (nogle kroner pr. gang). Sker sjældent.
+DEFAULT_PROFILE_CAPS = Caps(cafe_day=3, cafe_month=10, all_day=30, all_month=200)
 
 # Afsender indtil vi har et bekræftet domæne hos Resend (kan kun sende til din egen mail).
 DEFAULT_MAIL_FROM = "Stamgæst <onboarding@resend.dev>"
@@ -70,6 +72,7 @@ class Settings:
     # Lofter for betalte kald (se Caps).
     draft_caps: Caps = DEFAULT_DRAFT_CAPS
     fetch_caps: Caps = DEFAULT_FETCH_CAPS
+    profile_caps: Caps = DEFAULT_PROFILE_CAPS
     # Nødbremse: True slår udkast fra Claude fra for ALLE caféer.
     ai_paused: bool = False
     # Hvem får en mail, når et loft er ved at blive nået. Mangler den, skrives det kun i loggen.
@@ -150,6 +153,7 @@ def load_settings() -> Settings:
         app_base_url=(_clean(os.getenv("APP_BASE_URL")) or f"http://localhost:{port}").rstrip("/"),
         draft_caps=_caps("CAP_DRAFTS", DEFAULT_DRAFT_CAPS),
         fetch_caps=_caps("CAP_FETCHES", DEFAULT_FETCH_CAPS),
+        profile_caps=_caps("CAP_PROFILES", DEFAULT_PROFILE_CAPS),
         ai_paused=os.getenv("AI_PAUSED") == "1",
         admin_email=_clean(os.getenv("ADMIN_EMAIL")),
         claude_price_input_per_mtok=_price("CLAUDE_PRICE_INPUT_PER_MTOK", 3.0),

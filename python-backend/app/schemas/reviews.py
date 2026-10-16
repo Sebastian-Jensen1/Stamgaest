@@ -35,7 +35,6 @@ class DashboardResponse(CamelModel):
     restaurant_id: UUID
     business_name: str
     business_type: str
-    default_tone: str
     address: str
     rating: float | None
     user_rating_count: int | None

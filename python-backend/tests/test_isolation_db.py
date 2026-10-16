@@ -146,3 +146,85 @@ def test_two_users_at_the_same_cafe_share_it_and_nobody_else_does(client):
 
     as_user(client, other)
     assert client.get("/api/reviews").json()["reviews"] == []
+
+
+# ---- indstillinger for svar ------------------------------------------------------
+
+
+def _settings(facts="", **overrides):
+    values = {
+        "replyLength": "auto", "tone": "", "signature": "", "avoid": "", "contact": "", "examples": "",
+        "about": {"concept": facts, "items": [], "traits": [], "atmosphere": ""},
+    }
+    values.update(overrides)
+    return values
+
+
+def test_each_cafe_has_its_own_reply_settings(client, two_cafes):
+    a, b, _, _ = two_cafes
+    as_user(client, a)
+    assert client.put("/api/reply-settings", json=_settings(signature="Hilsen A", facts="A's hemmelige fakta")).status_code == 200
+
+    as_user(client, b)
+    data = client.get("/api/reply-settings").json()
+    assert data["signature"] == "" and data["about"]["concept"] == ""  # B ser intet fra A
+
+    client.put("/api/reply-settings", json=_settings(signature="Hilsen B"))
+    as_user(client, a)
+    assert client.get("/api/reply-settings").json()["signature"] == "Hilsen A"  # B ændrede ikke A's
+
+
+def test_the_browser_cannot_choose_whose_settings_it_changes(client, two_cafes):
+    a, b, _, _ = two_cafes
+    as_user(client, a)
+    response = client.put(
+        "/api/reply-settings",
+        json={**_settings(signature="Hacket"), "restaurantId": str(b["restaurant_id"])},
+    )
+    assert response.status_code == 200  # ekstra felter ignoreres ...
+    rows = db_rows(client, "SELECT restaurant_id, signature FROM reply_settings")
+    assert rows == [(a["restaurant_id"], "Hacket")]  # ... og kun A's egen række blev ændret
+
+
+def test_discarding_a_suggestion_only_touches_your_own_cafe(client, two_cafes):
+    from tests.conftest import db_execute
+
+    a, b, _, _ = two_cafes
+    for cafe in (a, b):
+        db_execute(
+            client,
+            """INSERT INTO reply_settings (restaurant_id, about_suggestion) VALUES (%s, '{"concept": "forslag"}')""",
+            (cafe["restaurant_id"],),
+        )
+    as_user(client, a)
+    assert client.delete("/api/reply-settings/suggestion").status_code == 200
+
+    rows = dict(db_rows(client, "SELECT restaurant_id, about_suggestion FROM reply_settings"))
+    assert rows[a["restaurant_id"]] is None
+    assert rows[b["restaurant_id"]] == {"concept": "forslag"}
+
+
+def test_a_customer_cannot_preview_a_draft_for_someone_elses_review(client, two_cafes):
+    a, b, _, b_reviews = two_cafes
+    as_user(client, a)
+    claude = use_claude(client, FakeClaude())
+    response = client.post(
+        "/api/generate/preview", json={"reviewId": b_reviews[0]["id"], "settings": _settings()}
+    )
+    assert response.status_code == 404  # "findes ikke", ligesom andre fremmede id'er
+    assert claude.calls == []  # og det kostede intet
+
+
+def test_another_cafes_sent_replies_never_end_up_in_your_prompt(client, two_cafes):
+    a, b, a_reviews, b_reviews = two_cafes
+    as_user(client, b)
+    client.post(f"/api/reviews/{b_reviews[0]['id']}/send", json={"finalText": "B's private svar"})
+    client.put("/api/reply-settings", json=_settings(facts="B's fakta", examples="B's eksempel"))
+
+    as_user(client, a)
+    claude = use_claude(client, FakeClaude())
+    assert client.post("/api/generate", json={"reviews": [{"id": a_reviews[0]["id"]}]}).status_code == 200
+
+    system = str(claude.calls[0]["system"])
+    assert "B's private svar" not in system and "B's fakta" not in system and "B's eksempel" not in system
+    assert "Café A" in system
