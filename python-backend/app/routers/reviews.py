@@ -11,12 +11,13 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends
 
-from app.core.deps import CurrentUser, get_http, get_places_key
+from app.core.config import Settings
+from app.core.deps import CurrentUser, get_http, get_places_key, get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import describe_wait
-from app.models import replies, restaurants, reviews
+from app.models import replies, restaurants, reviews, usage
 from app.schemas.reviews import DashboardResponse, OkResponse, SendReplyRequest
-from app.services import places_service
+from app.services import places_service, usage_service
 
 router = APIRouter()
 
@@ -61,6 +62,7 @@ async def refresh_reviews(
     user: CurrentUser,
     api_key: str = Depends(get_places_key),
     http: httpx.AsyncClient = Depends(get_http),
+    settings: Settings = Depends(get_settings),
 ):
     """POST /api/reviews/refresh  Henter de nyeste anmeldelser fra Google for DIN café og gemmer dem.
 
@@ -79,6 +81,16 @@ async def refresh_reviews(
         wait = max(1, int(REFRESH_COOLDOWN_SECONDS - elapsed) + 1)
         raise ApiError(429, f"Anmeldelserne blev lige hentet. Prøv igen om {describe_wait(wait)}.")
 
+    # Lofterne pr. dag og pr. måned. Afvises det, fortrydes reservationen ovenfor, så kunden
+    # ikke også skal vente et minut.
+    try:
+        event_ids = await usage_service.reserve(
+            kind=usage.FETCH, restaurant=restaurant, user_id=user["user_id"], count=1, settings=settings, http=http,
+        )
+    except Exception:
+        await restaurants.set_reviews_fetched_at(restaurant["id"], previous)
+        raise
+
     try:
         details = await places_service.get_place_details(http, restaurant["google_place_id"], api_key)
         restaurant = await restaurants.upsert_by_place_id(
@@ -92,8 +104,11 @@ async def refresh_reviews(
         await reviews.upsert_many(restaurant["id"], details.reviews)
     except Exception:
         # Lykkedes hentningen ikke, skal kunden kunne prøve igen med det samme, ikke vente et minut.
+        # Kaldet tæller stadig i lofterne, så nogen ikke kan blive ved med at prøve igen.
+        await usage.fail(event_ids)
         await restaurants.set_reviews_fetched_at(restaurant["id"], previous)
         raise
+    await usage.finish(event_ids[0])
 
     # Læs ALT tilbage fra databasen, også ældre anmeldelser som Google ikke længere sender.
     rows = await reviews.list_by_restaurant(restaurant["id"])

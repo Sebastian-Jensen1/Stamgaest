@@ -32,10 +32,12 @@ SYSTEM_PROMPT = (
 
 @dataclass(frozen=True)
 class Draft:
-    """Et færdigt udkast: teksten, og hvilken model der skrev den."""
+    """Et færdigt udkast: teksten, hvilken model der skrev den, og hvor mange tokens det kostede."""
 
     text: str
     model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 def _data(value: str) -> str:
@@ -142,4 +144,10 @@ async def draft_review_reply(
         logger.warning("Claude svarede uden tekst (stop_reason=%s)", message.stop_reason)
         raise UpstreamError("Claude gav ikke noget svar til en af anmeldelserne. Prøv igen.")
 
-    return Draft(text=text, model=model)
+    usage = getattr(message, "usage", None)
+    return Draft(
+        text=text,
+        model=model,
+        input_tokens=getattr(usage, "input_tokens", None),
+        output_tokens=getattr(usage, "output_tokens", None),
+    )

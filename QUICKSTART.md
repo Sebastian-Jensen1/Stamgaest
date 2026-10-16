@@ -90,6 +90,31 @@ uv run python -m app.admin deactivate --email ejer@gotland.dk       # slå fra, 
 uv run python -m app.admin activate --email ejer@gotland.dk         # slå til igen
 ```
 
+## Beskyt mod en stor regning
+
+Hvert udkast fra Claude og hver hentning fra Google koster penge. Der er lofter pr. café og for hele
+Stamgæst, pr. dag og pr. måned. De står i `python-backend/.env` som `CAP_...`-linjer. Ret tallet og
+genstart serveren. Alle navne og standardværdier står i `.env.example`.
+
+```
+uv run python -m app.admin usage                                    # forbrug pr. café og hvor tæt vi er på lofterne
+uv run python -m app.admin ai-off --restaurant-id <id>              # nødbremse: ingen udkast for én café
+uv run python -m app.admin ai-on --restaurant-id <id>               # slå til igen
+```
+
+Nødbremse for **alle**: sæt `AI_PAUSED=1` i `.env` og genstart. Du får en mail til `ADMIN_EMAIL`, når et
+loft når 80 % og 100 %.
+
+**Gør også dette hos udbyderne.** Lækkes en API-nøgle, kan den bruges helt uden om vores kode, og så er det
+kun disse grænser, der beskytter dig:
+
+1. **Anthropic Console** (console.anthropic.com): sæt en månedlig forbrugsgrænse under Limits/Billing, og
+   brug en API-nøgle der kun bruges til Stamgæst.
+2. **Google Cloud Console**: under APIs & Services → Credentials, begræns Places-nøglen til **kun
+   Places API**. Under Places API → Quotas, sæt et dagligt loft på antal kald. Under Billing → Budgets &
+   alerts, opret en budget-alarm.
+3. Lækker en nøgle alligevel: lav en ny nøgle hos udbyderen med det samme, og slet den gamle.
+
 ## Start appen
 
 ```

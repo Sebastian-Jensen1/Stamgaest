@@ -44,7 +44,7 @@ def seed(client, **kwargs):
 
 def test_migrations_apply_once_and_are_idempotent(migration_result):
     first, second = migration_result
-    assert first == 4  # 001_init, 002_auth, 003_password_tokens og 004_invitations
+    assert first == 5  # 001_init, 002_auth, 003_password_tokens, 004_invitations og 005_usage
     assert second == 0  # næste kørsel gør ingenting
 
 
