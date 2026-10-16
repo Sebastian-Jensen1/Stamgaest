@@ -66,7 +66,7 @@ kræver en server der kører hele tiden (#16). Rækkefølge: #16 → #8 → #4 �
   - Anbefaling: start med **manuel godkendelse** (konto er "afventer", til vi godkender den),
     og skift til betaling senere.
 - [ ] **#13 Fejlovervågning** (Sentry) og uptime-check, nu hvor kunder er afhængige af det.
-- [ ] **#14 Forbrugsloft og audit-log** på Claude-kald, så ingen kan løbe API-regningen op.
+- [x] **#14 Forbrugsloft og audit-log** på Claude-kald, så ingen kan løbe API-regningen op.
 - [ ] **#15 2FA** eller "log ind via mail-link" (magic link) som alternativ til adgangskoder.
 
 ## Hosting

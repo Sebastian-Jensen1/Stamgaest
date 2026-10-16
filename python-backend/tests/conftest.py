@@ -129,7 +129,7 @@ def clean_tables(request):
     request.getfixturevalue("migration_result")  # tabellerne skal findes før de tømmes
     test_client = request.getfixturevalue("client")
     with psycopg.connect(db_pool.build_conninfo(url), autocommit=True) as conn:
-        conn.execute("TRUNCATE restaurants, reviews, replies, users, sessions CASCADE")
+        conn.execute("TRUNCATE restaurants, reviews, replies, users, sessions, usage_events, usage_alerts CASCADE")
     test_client.cookies.clear()
     test_client.app.state.limits.reset_all()
     yield
@@ -272,6 +272,7 @@ class FakeClaude:
         return SimpleNamespace(
             content=[SimpleNamespace(type="text", text=f"  Udkast nr. {n}  ")],
             stop_reason="end_turn",
+            usage=SimpleNamespace(input_tokens=500, output_tokens=100),
         )
 
     async def close(self):

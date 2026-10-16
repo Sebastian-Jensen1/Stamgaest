@@ -10,6 +10,8 @@ Kør fra python-backend/:
     uv run python -m app.admin reset-password --email ejer@gotland.dk
     uv run python -m app.admin deactivate --email ejer@gotland.dk
     uv run python -m app.admin stats --days 30
+    uv run python -m app.admin usage --days 30
+    uv run python -m app.admin ai-off --restaurant-id <id>
 
 Der er bevidst ingen admin-side på nettet. Kun den der har adgang til serverens .env kan oprette
 kunder, så der ikke er en indgang at angribe udefra. Adgangskoder skrives aldrig på kommandolinjen
@@ -29,7 +31,7 @@ from email_validator import EmailNotValidError, validate_email
 
 from app.core.config import Settings, load_settings
 from app.db import pool
-from app.models import password_tokens, replies, restaurants, reviews, sessions, users
+from app.models import password_tokens, replies, restaurants, reviews, sessions, usage, users
 from app.services import auth_service, edit_metrics, email_service, places_service
 
 
@@ -92,6 +94,9 @@ async def create_customer(
         )
         await reviews.upsert_many(restaurant["id"], details.reviews)
         await restaurants.claim_refresh(restaurant["id"], 0)  # noterer at anmeldelserne er hentet nu
+        # Hentningen kostede et Google-kald, så den skal med i regnskabet (men tjekkes ikke mod
+        # lofterne: det er os selv der opretter kunden).
+        await usage.record_done(kind=usage.FETCH, restaurant_id=restaurant["id"])
     else:
         restaurant = await restaurants.find_by_id(restaurant_id)
         if restaurant is None:
@@ -309,7 +314,63 @@ async def _list_customers() -> None:
 async def _list_restaurants() -> None:
     """Kommandoen `list-restaurants`."""
     for r in await restaurants.list_all():
-        print(f"{r['id']}  {r['name']}  [{r['user_count']} bruger(e)]  place-id: {r['google_place_id'] or '-'}")
+        flag = "" if r["ai_enabled"] else "  [udkast slået fra]"
+        print(f"{r['id']}  {r['name']}  [{r['user_count']} bruger(e)]  place-id: {r['google_place_id'] or '-'}{flag}")
+
+
+async def set_ai_enabled(restaurant_id: UUID, enabled: bool) -> None:
+    """Slår udkast fra Claude til eller fra for én café (nødbremse)."""
+    if not await restaurants.set_ai_enabled(restaurant_id, enabled):
+        raise CliError("Der findes ingen café med det id. Se dem med 'list-restaurants'.")
+
+
+def _caps_line(name: str, used: dict[str, int], caps) -> str:
+    """Én linje med forbrug i forhold til lofterne for hele Stamgæst."""
+    return (
+        f"  {name:24} i dag {used['all_day']:>6} af {caps.all_day:<7}"
+        f"denne måned {used['all_month']:>7} af {caps.all_month}"
+    )
+
+
+async def _usage(settings: Settings, args: argparse.Namespace) -> None:
+    """Kommandoen `usage`: forbrug pr. café, i alt, og i forhold til lofterne."""
+    if args.days < 1:
+        raise CliError("--days skal være mindst 1.")
+    rows = await usage.summary(args.days)
+    price_in = settings.claude_price_input_per_mtok
+    price_out = settings.claude_price_output_per_mtok
+
+    def dollars(row: dict) -> float:
+        return (row["input_tokens"] * price_in + row["output_tokens"] * price_out) / 1_000_000
+
+    if settings.ai_paused:
+        print("BEMÆRK: AI_PAUSED=1 er sat, så udkast er slået fra for ALLE.\n")
+
+    print("Lige nu (hele Stamgæst, dansk tid)")
+    print(_caps_line("Udkast fra Claude", await usage.current(usage.DRAFT), settings.draft_caps))
+    print(_caps_line("Hentninger fra Google", await usage.current(usage.FETCH), settings.fetch_caps))
+
+    print(f"\nPr. café, de sidste {args.days} dage")
+    if not rows:
+        print("  Intet forbrug endnu.")
+        return
+    print(f"  {'Café':30} {'Udkast':>7} {'Tokens ind':>11} {'Tokens ud':>10} {'Anslået':>9} {'Hentninger':>11}")
+    for row in rows:
+        flag = "" if row["ai_enabled"] in (True, None) else "   [udkast slået fra]"
+        print(
+            f"  {row['restaurant_name'][:30]:30} {row['drafts']:>7} {row['input_tokens']:>11} "
+            f"{row['output_tokens']:>10} {'$' + format(dollars(row), '.2f'):>9} {row['fetches']:>11}{flag}"
+        )
+    total = {key: sum(row[key] for row in rows) for key in ("drafts", "input_tokens", "output_tokens", "fetches")}
+    print(
+        f"  {'I alt':30} {total['drafts']:>7} {total['input_tokens']:>11} {total['output_tokens']:>10} "
+        f"{'$' + format(dollars(total), '.2f'):>9} {total['fetches']:>11}"
+    )
+    print(
+        f"\nBeløbet er kun Claude, anslået ud fra {price_in:g}/{price_out:g} USD pr. million tokens ind/ud "
+        "(CLAUDE_PRICE_*_PER_MTOK i .env). Den rigtige regning står i Anthropic Console. "
+        "Google-prisen står i Google Cloud Console."
+    )
 
 
 def _pct(value: float) -> str:
@@ -394,6 +455,16 @@ def _parser() -> argparse.ArgumentParser:
         command = commands.add_parser(name, help=text)
         command.add_argument("--email", required=True)
 
+    usage_cmd = commands.add_parser("usage", help="forbrug af Claude og Google pr. café og i forhold til lofterne")
+    usage_cmd.add_argument("--days", type=int, default=30, help="hvor mange dage tilbage (standard 30)")
+
+    for name, text in (
+        ("ai-off", "slå udkast fra Claude FRA for én café (nødbremse)"),
+        ("ai-on", "slå udkast fra Claude til igen for én café"),
+    ):
+        command = commands.add_parser(name, help=text)
+        command.add_argument("--restaurant-id", required=True, help="caféens id (fra 'list-restaurants')")
+
     stats = commands.add_parser("stats", help="hvor meget retter kunderne i Claudes udkast?")
     stats.add_argument("--days", type=int, help="kun svar sendt de sidste N dage (fx for at sammenligne før/efter en ny prompt)")
     stats.add_argument("--restaurant-id", help="kun én café (fra 'list-restaurants')")
@@ -429,6 +500,12 @@ async def _run(args: argparse.Namespace, settings: Settings) -> None:
             print("Færdig.")
         elif args.command == "stats":
             await _stats(args)
+        elif args.command == "usage":
+            await _usage(settings, args)
+        elif args.command in ("ai-off", "ai-on"):
+            await set_ai_enabled(UUID(args.restaurant_id), args.command == "ai-on")
+            state = "slået TIL" if args.command == "ai-on" else "slået FRA"
+            print(f"Udkast fra Claude er {state} for caféen. Det gælder med det samme.")
     finally:
         await pool.close_pool()
 

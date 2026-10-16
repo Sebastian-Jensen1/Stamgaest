@@ -116,6 +116,8 @@ tilbage. Kan en kunde ikke få mail, kan `--show-password` vise en adgangskode �
 | `list-customers` / `list-restaurants` | Viser kunder (med status: afventer invitation / INVITATION UDLØBET / aktiv) / caféer (med id) |
 | `reset-password --email …` | Ny adgangskode, og kunden logges ud alle steder (glemt kode) |
 | `deactivate --email …` / `activate --email …` | Slår en kunde fra/til, og fra logger dem ud med det samme |
+| `usage [--days N]` | Forbrug af Claude og Google pr. café, anslået beløb, og hvor tæt vi er på lofterne |
+| `ai-off --restaurant-id …` / `ai-on --restaurant-id …` | Nødbremse: slår udkast fra Claude fra/til for én café med det samme |
 | `stats [--days N] [--restaurant-id …]` | Hvor meget kunderne retter i Claudes udkast før de sender, og de mest rettede eksempler. Kun til os |
 
 ## Database (PostgreSQL på Neon)
@@ -265,6 +267,16 @@ En hel kørsel tager ca. 3 minutter, fordi databasen ligger i skyen.
   af routerne. Forkerte og manglende id'er giver samme svar ("findes ikke").
 - **Adgangskoder:** argon2id, mindst 10 tegn, og server-genererede adgangskoder til nye kunder.
   Samme svar på "forkert adgangskode" og "ukendt e-mail", og der regnes lige lang tid på begge.
+- **Lofter for betalte kald:** udkast fra Claude og hentninger fra Google har lofter pr. café og
+  for hele Stamgæst, pr. dag og pr. måned (sættes i `.env`, se `.env.example`). Pladsen reserveres
+  i databasen *før* kaldet, i én transaktion med en lås, så samtidige klik ikke kan komme over
+  loftet, og lofterne holder efter en genstart. Fejlede kald tæller også med, for de kan koste
+  penge, og ellers kunne man prøve igen i det uendelige. Hvert kald logges i `usage_events`
+  (café, bruger, tokens), men aldrig anmeldelsestekst eller navne. Vi får en mail ved 80 % og
+  100 % (`ADMIN_EMAIL`). Nødbremser: `ai-off` pr. café og `AI_PAUSED=1` for alle.
+- **Lofter hos udbyderne:** lækkes en API-nøgle, kan den bruges uden om vores kode. Derfor skal
+  der også være en forbrugsgrænse i Anthropic Console og et dagligt loft og en budget-alarm i
+  Google Cloud (se QUICKSTART, "Beskyt mod en stor regning").
 - **Gætte-angreb:** højst 5 forkerte forsøg pr. e-mail og 20 pr. IP-adresse på 15 minutter
   (også selvom næste gæt er rigtigt). Højst 100 udkast pr. bruger i timen, og en pause på
   et minut mellem hentninger fra Google.
@@ -360,11 +372,11 @@ review-assistant/
     │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate
     │   ├── schemas/             # Tjekker og former data ind og ud
     │   ├── services/            # Claude, Google Places og login (adgangskoder, sessioner)
-    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens)
+    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens, usage)
     │   ├── db/
     │   │   ├── pool.py          # Forbindelsen til databasen
     │   │   ├── migrate.py       # Migrations-runner
-    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder)
+    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug)
     │   └── core/                # Indstillinger, fejl, sikkerhed, grænser og "hvem er logget ind"
     └── tests/                   # uv run pytest
 ```

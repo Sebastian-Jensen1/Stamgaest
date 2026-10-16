@@ -52,12 +52,20 @@ async def list_all() -> list[dict]:
     """Henter alle steder, med antal brugere. Bruges af admin-værktøjet."""
     return await fetch_all(
         """
-        SELECT r.id, r.name, r.google_place_id, r.business_type,
+        SELECT r.id, r.name, r.google_place_id, r.business_type, r.ai_enabled,
                (SELECT count(*) FROM users u WHERE u.restaurant_id = r.id) AS user_count
           FROM restaurants r
          ORDER BY r.name
         """
     )
+
+
+async def set_ai_enabled(restaurant_id: UUID, enabled: bool) -> bool:
+    """Slår udkast fra Claude til eller fra for én café. Returnerer False hvis caféen ikke findes."""
+    row = await fetch_one(
+        "UPDATE restaurants SET ai_enabled = %s WHERE id = %s RETURNING id", (enabled, restaurant_id)
+    )
+    return row is not None
 
 
 async def find_by_id(restaurant_id: UUID) -> dict | None:

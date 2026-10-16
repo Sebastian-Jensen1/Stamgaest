@@ -20,6 +20,25 @@ load_dotenv(BACKEND_DIR / ".env")
 # Modellen der skriver udkastene. Kan ændres med CLAUDE_MODEL i .env.
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
 
+@dataclass(frozen=True)
+class Caps:
+    """Lofter for én slags betalt kald: pr. café og for hele Stamgæst, pr. dag og pr. måned.
+
+    Dag og måned regnes i dansk tid. Lofterne for "hele Stamgæst" er den vigtigste bremse: de
+    holder, selv hvis mange konti misbruges på én gang.
+    """
+
+    cafe_day: int
+    cafe_month: int
+    all_day: int
+    all_month: int
+
+
+# Udkast fra Claude. Et udkast koster ca. 0,04 kr. med claude-sonnet-4-6 (oktober 2026).
+DEFAULT_DRAFT_CAPS = Caps(cafe_day=100, cafe_month=1000, all_day=1000, all_month=10000)
+# Hentninger fra Google Places (hver er ét betalt kald).
+DEFAULT_FETCH_CAPS = Caps(cafe_day=20, cafe_month=300, all_day=200, all_month=3000)
+
 # Afsender indtil vi har et bekræftet domæne hos Resend (kan kun sende til din egen mail).
 DEFAULT_MAIL_FROM = "Stamgæst <onboarding@resend.dev>"
 
@@ -48,6 +67,16 @@ class Settings:
     mail_from: str = DEFAULT_MAIL_FROM
     # Adressen siden ligger på. Bruges til linket i mails, uden skråstreg til sidst.
     app_base_url: str = "http://localhost:3000"
+    # Lofter for betalte kald (se Caps).
+    draft_caps: Caps = DEFAULT_DRAFT_CAPS
+    fetch_caps: Caps = DEFAULT_FETCH_CAPS
+    # Nødbremse: True slår udkast fra Claude fra for ALLE caféer.
+    ai_paused: bool = False
+    # Hvem får en mail, når et loft er ved at blive nået. Mangler den, skrives det kun i loggen.
+    admin_email: str | None = None
+    # Claudes pris i USD pr. million tokens. Bruges kun til det anslåede beløb i `usage`.
+    claude_price_input_per_mtok: float = 3.0
+    claude_price_output_per_mtok: float = 15.0
 
 
 def _clean(value: str | None) -> str | None:
@@ -67,6 +96,41 @@ def _port(raw: str | None) -> int:
     return port
 
 
+def _positive_int(name: str, default: int) -> int:
+    """Læser et loft fra miljøet. Bruger standardværdien hvis det ikke er sat, og fejler hvis det er ugyldigt."""
+    raw = _clean(os.getenv(name))
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise RuntimeError(f"{name} skal være et heltal, ikke {raw!r}.") from None
+    if value < 0:
+        raise RuntimeError(f"{name} må ikke være negativ.")
+    return value
+
+
+def _price(name: str, default: float) -> float:
+    """Læser en pris (USD pr. million tokens) fra miljøet."""
+    raw = _clean(os.getenv(name))
+    if raw is None:
+        return default
+    try:
+        return float(raw.replace(",", "."))
+    except ValueError:
+        raise RuntimeError(f"{name} skal være et tal, ikke {raw!r}.") from None
+
+
+def _caps(prefix: str, default: Caps) -> Caps:
+    """Læser de fire lofter med et fælles navn, fx CAP_DRAFTS_CAFE_DAY, CAP_DRAFTS_CAFE_MONTH osv."""
+    return Caps(
+        cafe_day=_positive_int(f"{prefix}_CAFE_DAY", default.cafe_day),
+        cafe_month=_positive_int(f"{prefix}_CAFE_MONTH", default.cafe_month),
+        all_day=_positive_int(f"{prefix}_TOTAL_DAY", default.all_day),
+        all_month=_positive_int(f"{prefix}_TOTAL_MONTH", default.all_month),
+    )
+
+
 def load_settings() -> Settings:
     """Læser miljøet og returnerer en færdig Settings."""
     hosts = os.getenv("ALLOWED_HOSTS") or "localhost,127.0.0.1"
@@ -84,6 +148,12 @@ def load_settings() -> Settings:
         resend_api_key=_clean(os.getenv("RESEND_API_KEY")),
         mail_from=_clean(os.getenv("MAIL_FROM")) or DEFAULT_MAIL_FROM,
         app_base_url=(_clean(os.getenv("APP_BASE_URL")) or f"http://localhost:{port}").rstrip("/"),
+        draft_caps=_caps("CAP_DRAFTS", DEFAULT_DRAFT_CAPS),
+        fetch_caps=_caps("CAP_FETCHES", DEFAULT_FETCH_CAPS),
+        ai_paused=os.getenv("AI_PAUSED") == "1",
+        admin_email=_clean(os.getenv("ADMIN_EMAIL")),
+        claude_price_input_per_mtok=_price("CLAUDE_PRICE_INPUT_PER_MTOK", 3.0),
+        claude_price_output_per_mtok=_price("CLAUDE_PRICE_OUTPUT_PER_MTOK", 15.0),
     )
     # COOKIE_SECURE=1 betyder at siden ligger på et rigtigt domæne med HTTPS. Så skal linkene i
     # mails også pege dertil. Ellers ville en kunde få et link til localhost, som ikke virker.
