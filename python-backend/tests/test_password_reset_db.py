@@ -294,6 +294,53 @@ def test_reset_input_is_validated(client):
         assert client.post("/api/auth/reset-password", json=payload).status_code == 400
 
 
+# ---- mail når adgangskoden er ændret ---------------------------------------------
+
+
+def changed_mails(mails):
+    """De mails der fortæller at adgangskoden er ændret."""
+    return [json.loads(m.content) for m in mails if "er ændret" in json.loads(m.content)["subject"]]
+
+
+def test_changing_password_while_logged_in_sends_a_warning_mail(client):
+    logged_in(client)
+    mails = use_resend(client)
+
+    response = client.post("/api/auth/password", json={"currentPassword": PASSWORD, "newPassword": NEW_PASSWORD})
+
+    assert response.status_code == 200
+    (mail,) = changed_mails(mails)
+    assert mail["to"] == ["ejer@test.dk"]
+    assert mail["subject"] == "Din adgangskode til Stamgæst er ændret"
+    assert "Glemt adgangskode" in mail["text"]
+    assert "https://stamgaest.com" in mail["text"]
+    # Mailen må ikke give adgang til kontoen, hvis en anden læser den.
+    assert "#nulstil=" not in mail["text"]
+
+
+def test_a_failed_password_change_sends_no_mail(client):
+    logged_in(client)
+    mails = use_resend(client)
+    client.post("/api/auth/password", json={"currentPassword": "forkert", "newPassword": NEW_PASSWORD})
+    assert mails == []
+
+
+def test_choosing_a_new_password_from_the_link_sends_a_warning_mail_too(client):
+    make_customer(client)
+    mails = use_resend(client)
+    forgot(client)
+    assert reset(client, token_in(mails[0])).status_code == 200
+    assert len(changed_mails(mails)) == 1
+
+
+def test_the_warning_mail_never_breaks_the_password_change(client):
+    logged_in(client)
+    use_resend(client, lambda request: httpx.Response(500, json={"message": "nede"}))
+    response = client.post("/api/auth/password", json={"currentPassword": PASSWORD, "newPassword": NEW_PASSWORD})
+    assert response.status_code == 200
+    assert login(client, {"email": "ejer@test.dk", "password": NEW_PASSWORD}).status_code == 200
+
+
 # ---- selve mailservicen (uden database) ------------------------------------------
 
 
@@ -308,3 +355,22 @@ async def test_a_network_error_to_resend_is_swallowed():
     settings = make_settings(resend_api_key="k")
     sent = await email_service.send_email(http, settings, to="a@b.dk", subject="Hej", text="Hej")
     assert sent is False
+
+
+async def test_the_warning_mail_shows_danish_time():
+    from datetime import datetime, timezone
+
+    from app.services import email_service
+    from tests.conftest import make_settings
+
+    sent = []
+
+    def recording(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"id": "mail-1"})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(recording))
+    settings = make_settings(resend_api_key="k")
+    # 12:30 UTC om sommeren er 14:30 i Danmark.
+    await email_service.send_password_changed(http, settings, to="a@b.dk", when=datetime(2026, 7, 1, 12, 30, tzinfo=timezone.utc))
+    assert "01.07.2026 kl. 14:30" in sent[0]["text"]

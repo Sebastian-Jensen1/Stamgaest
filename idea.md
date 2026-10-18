@@ -35,8 +35,9 @@
     En ny dårlig anmeldelse kan derfor mangle. Løses først rigtigt med #7.
 - [ ] **#5 Skift mail når man er logget ind, og bekræftelsesmail ved ændringer.**
   - Skift adgangskode findes allerede (`POST /api/auth/password` og "Skift adgangskode" i dashboardet).
-  - Mangler: skift af mail (den nye adresse bekræftes via et link, før den gælder), og en mail til
-    den gamle adresse når adgangskode eller mail ændres, så den rigtige ejer opdager en overtagelse.
+  - Mail ved ændret adgangskode er lavet.
+  - Mangler: skift af mail. Den nye adresse bekræftes via et link, før den gælder, og den gamle
+    adresse får besked, så den rigtige ejer opdager en overtagelse.
 
 ## Produktforbedringer
 

@@ -120,11 +120,22 @@ async def me(user: CurrentUser):
     return await _me(user)
 
 
+async def _send_password_changed_mail(http: httpx.AsyncClient, settings: Settings, email: str) -> None:
+    """Sender mailen "din adgangskode er ændret". Køres efter svaret, så en langsom mail ikke venter."""
+    try:
+        await email_service.send_password_changed(http, settings, to=email, when=datetime.now(timezone.utc))
+    except Exception:  # noqa: BLE001 - en baggrundsopgave har ingen at svare til, så fejlen logges
+        logger.exception("Kunne ikke sende mail om ændret adgangskode")
+
+
 @router.post("/auth/password", response_model=OkResponse)
 async def change_password(
     body: ChangePasswordRequest,
     user: CurrentUser,
+    background: BackgroundTasks,
     limits: Limits = Depends(get_limits),
+    settings: Settings = Depends(get_settings),
+    http: httpx.AsyncClient = Depends(get_http),
 ):
     """POST /api/auth/password  Skifter adgangskode og logger alle ANDRE enheder ud."""
     email = user["email"]
@@ -149,6 +160,8 @@ async def change_password(
 
     await users.update_password(user["user_id"], await auth_service.hash_password(body.new_password))
     await sessions.delete_for_user(user["user_id"], except_token_hash=user["token_hash"])
+    # Har en anden fået fat i en åben browser og skiftet koden, opdager den rigtige ejer det her.
+    background.add_task(_send_password_changed_mail, http, settings, stored["email"])
     return OkResponse()
 
 
@@ -214,7 +227,10 @@ async def forgot_password(
 async def reset_password(
     body: ResetPasswordRequest,
     request: Request,
+    background: BackgroundTasks,
     limits: Limits = Depends(get_limits),
+    settings: Settings = Depends(get_settings),
+    http: httpx.AsyncClient = Depends(get_http),
 ):
     """POST /api/auth/reset-password  Vælger ny adgangskode med nøglen fra mailen og logger ud alle steder."""
     ip = _client_ip(request)
@@ -241,4 +257,7 @@ async def reset_password(
     await sessions.delete_for_user(user["user_id"])
     await password_tokens.delete_for_user(user["user_id"])
     limits.login_email.reset(auth_service.normalize_email(user["email"]))
+    # En ny kunde der vælger sin FØRSTE adgangskode fra invitationen, har ikke ændret noget.
+    if not user["invite_pending"]:
+        background.add_task(_send_password_changed_mail, http, settings, user["email"])
     return OkResponse()

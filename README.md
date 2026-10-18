@@ -72,6 +72,11 @@ ny adgangskode, og bagefter er kunden logget ud alle steder.
 - `reset-password` i kommandolinjeværktøjet virker stadig, hvis kunden ikke kan få mail.
 - Er kunden netop inviteret og har ikke valgt en adgangskode endnu, sendes der ingen mail herfra (se nedenfor).
 
+**Mail når adgangskoden er ændret.** Skiftes adgangskoden (når man er logget ind, eller via et link
+fra "Glemt adgangskode"), får kontoens e-mail en besked med tidspunktet. Var det ikke kunden selv,
+kan de tage kontoen tilbage med "Glemt adgangskode", som logger alle andre ud. Mailen har bevidst
+intet link der giver adgang, og den sendes ikke, når en ny kunde vælger sin første adgangskode.
+
 Mails sendes via [Resend](https://resend.com) og kræver tre ting i `.env`:
 
 | Nøgle | Hvad |

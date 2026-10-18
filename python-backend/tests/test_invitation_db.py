@@ -78,6 +78,8 @@ def test_invitation_mail_has_a_link_that_lets_the_customer_choose_a_password(cli
     assert reset(client, token_in(mails[0])).status_code == 200
     customer = {"email": "ejer@test.dk", "password": NEW_PASSWORD}
     assert login(client, customer).status_code == 200
+    # Den første adgangskode er ikke en "ændring", så der kommer ingen advarselsmail.
+    assert len(mails) == 1
 
 
 def test_the_link_works_for_7_days_not_an_hour(client):
