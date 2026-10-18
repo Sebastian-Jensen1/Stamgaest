@@ -4,6 +4,7 @@ Alt der står i .env læses her, ét sted. Resten af koden får en færdig `Sett
 i stedet for selv at kigge i .env.
 """
 
+import ipaddress
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +41,17 @@ DEFAULT_DRAFT_CAPS = Caps(cafe_day=100, cafe_month=1000, all_day=1000, all_month
 DEFAULT_FETCH_CAPS = Caps(cafe_day=20, cafe_month=300, all_day=200, all_month=3000)
 # "Byg profil fra hjemmesiden": Claude læser hjemmesiden (nogle kroner pr. gang). Sker sjældent.
 DEFAULT_PROFILE_CAPS = Caps(cafe_day=3, cafe_month=10, all_day=30, all_month=200)
+
+# Cloudflares egne IP-adresser, som de står på https://www.cloudflare.com/ips/ (oktober 2026).
+# Bruges når TRUSTED_PROXIES indeholder "cloudflare". Listen ændres sjældent, men tjek den ved
+# flytningen til en host.
+CLOUDFLARE_IP_RANGES = (
+    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18",
+    "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20", "197.234.240.0/22", "198.41.128.0/17",
+    "162.158.0.0/15", "104.16.0.0/13", "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+    "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32", "2405:8100::/32",
+    "2a06:98c0::/29", "2c0f:f248::/32",
+)
 
 # Afsender indtil vi har et bekræftet domæne hos Resend (kan kun sende til din egen mail).
 DEFAULT_MAIL_FROM = "Stamgæst <onboarding@resend.dev>"
@@ -80,6 +92,12 @@ class Settings:
     # Claudes pris i USD pr. million tokens. Bruges kun til det anslåede beløb i `usage`.
     claude_price_input_per_mtok: float = 3.0
     claude_price_output_per_mtok: float = 15.0
+    # Hvilken netværksadresse serveren lytter på. 127.0.0.1 = kun denne maskine. Hos en host
+    # skal den være 0.0.0.0, så hostens proxy kan nå den.
+    host: str = "127.0.0.1"
+    # Proxyer vi stoler på til at fortælle kundens rigtige IP (X-Forwarded-For). Kun kald der
+    # kommer direkte fra en af dem, får lov at ændre IP'en. Alle andre kunne skrive hvad som helst.
+    trusted_proxies: tuple[str, ...] = ("127.0.0.1",)
 
 
 def _clean(value: str | None) -> str | None:
@@ -97,6 +115,50 @@ def _port(raw: str | None) -> int:
     if not 1 <= port <= 65535:
         raise RuntimeError(f"PORT skal være mellem 1 og 65535, ikke {port}.")
     return port
+
+
+def _host(raw: str | None) -> str:
+    """Læser HOST. Skal være en IP-adresse, fx 127.0.0.1 (kun denne maskine) eller 0.0.0.0 (alle)."""
+    host = raw or "127.0.0.1"
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        raise RuntimeError(f"HOST skal være en IP-adresse, fx 127.0.0.1 eller 0.0.0.0, ikke {host!r}.") from None
+    return host
+
+
+def _is_loopback(host: str) -> bool:
+    """Svarer på om adressen kun kan nås fra denne maskine (127.x.x.x eller ::1)."""
+    return ipaddress.ip_address(host).is_loopback
+
+
+def _trusted_proxies(raw: str | None) -> tuple[str, ...]:
+    """Læser TRUSTED_PROXIES: IP-adresser og net (fx 10.0.0.0/8), adskilt af komma.
+
+    Ordet "cloudflare" tilføjer Cloudflares net. En ugyldig værdi får serveren til at stoppe,
+    for en stavefejl her ville ellers stille og roligt slå grænsen for gætte-forsøg fra.
+    """
+    entries = [e.strip() for e in (raw or "127.0.0.1").split(",") if e.strip()]
+    result: list[str] = []
+    for entry in entries:
+        if entry.lower() == "cloudflare":
+            result.extend(CLOUDFLARE_IP_RANGES)
+            continue
+        # "*" ville betyde "stol på alle", og så kunne enhver selv vælge sin IP.
+        if entry == "*":
+            raise RuntimeError("TRUSTED_PROXIES må ikke være *. Skriv proxyernes adresser eller net.")
+        try:
+            if "/" in entry:
+                ipaddress.ip_network(entry)
+            else:
+                ipaddress.ip_address(entry)
+        except ValueError:
+            raise RuntimeError(
+                f"TRUSTED_PROXIES indeholder {entry!r}, som ikke er en IP-adresse eller et net "
+                "(fx 10.0.0.0/8)."
+            ) from None
+        result.append(entry)
+    return tuple(result)
 
 
 def _positive_int(name: str, default: int) -> int:
@@ -158,7 +220,17 @@ def load_settings() -> Settings:
         admin_email=_clean(os.getenv("ADMIN_EMAIL")),
         claude_price_input_per_mtok=_price("CLAUDE_PRICE_INPUT_PER_MTOK", 3.0),
         claude_price_output_per_mtok=_price("CLAUDE_PRICE_OUTPUT_PER_MTOK", 15.0),
+        host=_host(_clean(os.getenv("HOST"))),
+        trusted_proxies=_trusted_proxies(_clean(os.getenv("TRUSTED_PROXIES"))),
     )
+    # Lytter serveren på netværket, skal login ske over HTTPS. Ellers kan adgangskoder og
+    # login-cookies læses af alle på vejen. COOKIE_SECURE=1 er tegnet på at der er HTTPS foran.
+    if not _is_loopback(settings.host) and not settings.cookie_secure:
+        raise RuntimeError(
+            f"HOST={settings.host} gør serveren synlig på netværket, men COOKIE_SECURE=1 er ikke sat. "
+            "Brug kun en anden HOST end 127.0.0.1 bag HTTPS (hos hosten), og sæt COOKIE_SECURE=1 og "
+            "APP_BASE_URL=https://dit-domæne."
+        )
     # COOKIE_SECURE=1 betyder at siden ligger på et rigtigt domæne med HTTPS. Så skal linkene i
     # mails også pege dertil. Ellers ville en kunde få et link til localhost, som ikke virker.
     if settings.cookie_secure and not settings.app_base_url.startswith("https://"):

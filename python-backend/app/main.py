@@ -14,6 +14,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.core.config import Settings, load_settings
 from app.core.errors import register_error_handlers
@@ -27,7 +28,7 @@ from app.core.security import (
     inline_script_hashes,
 )
 from app.db import pool as db_pool
-from app.routers import auth, generate, reply_settings, reviews
+from app.routers import auth, generate, health, reply_settings, reviews
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -77,6 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(generate.router, prefix="/api")
     app.include_router(reviews.router, prefix="/api")
     app.include_router(reply_settings.router, prefix="/api")
+    app.include_router(health.router, prefix="/api")
 
     # Server siden (index.html). Kun mappen public/ er tilgængelig, ikke koden eller .env.
     if settings.public_dir.is_dir():
@@ -97,6 +99,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # og 127.0.0.1). Det beskytter mod at en fremmed hjemmeside får din browser til
     # at kalde din lokale server via sit eget domæne ("DNS rebinding").
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
+    # Bag en proxy (Cloudflare, hosten) ser serveren proxyens IP i stedet for kundens. Den her
+    # læser kundens rigtige IP fra X-Forwarded-For, men KUN når kaldet kommer fra en proxy i
+    # TRUSTED_PROXIES. Listen læses bagfra, og den første adresse der ikke er en kendt proxy,
+    # er kunden. Så kan ingen snyde grænsen for gætte-forsøg ved selv at skrive en falsk IP.
+    # Tilføjes sidst, så IP'en er rettet, før alt andet kører.
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=list(settings.trusted_proxies))
 
     return app
 

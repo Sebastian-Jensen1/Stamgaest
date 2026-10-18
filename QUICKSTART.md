@@ -195,9 +195,10 @@ Safari gør ikke. Vil du arbejde lokalt uden at tænke over det, så kommentér 
 
 Serveren nægter at starte, hvis `COOKIE_SECURE=1` er sat uden en https-`APP_BASE_URL`.
 
-Husk: gennem tunnelen ser serveren alle besøgende som samme IP-adresse (`127.0.0.1`), så
-grænserne pr. IP (forkerte logins, glemt adgangskode) gælder alle samlet. Det er fint til test,
-men skal løses ved rigtig hosting (se README, afsnittet "Sikkerhed").
+Gennem tunnelen kommer alle kald fra `127.0.0.1`. Serveren stoler som standard på den adresse
+(`TRUSTED_PROXIES=127.0.0.1`) og læser derfor den besøgendes rigtige IP fra `X-Forwarded-For`, som
+Cloudflare sætter. Så gælder grænserne pr. IP (forkerte logins, glemt adgangskode) hver besøgende for
+sig. Se README, afsnittet "Hosting".
 
 ## Se hjemmesiden (stamgaest-website)
 
