@@ -75,7 +75,7 @@ async def send_invitation(
         f"Brug dette link for at vælge din adgangskode (det virker i {days} dage og kun én gang):\n"
         f"{link}\n\n"
         "Bagefter logger du ind med denne e-mailadresse og den adgangskode, du har valgt.\n\n"
-        "Kom du ikke forventet denne mail, kan du bare slette den.\n\n"
+        "Har du ikke forventet denne mail, kan du bare slette den.\n\n"
         "Venlig hilsen\nStamgæst"
     )
     return await send_email(http, settings, to=to, subject="Velkommen til Stamgæst: vælg din adgangskode", text=text)
