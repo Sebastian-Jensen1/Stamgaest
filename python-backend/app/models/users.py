@@ -1,5 +1,6 @@
 """Databasen: tabellen `users` (kunder der kan logge ind)."""
 
+from datetime import datetime
 from uuid import UUID
 
 from app.db.pool import fetch_all, fetch_one, fetch_one_required
@@ -40,6 +41,34 @@ async def set_active(user_id: UUID, active: bool) -> None:
 async def touch_login(user_id: UUID) -> None:
     """Noterer at brugeren lige har logget ind."""
     await fetch_all("UPDATE users SET last_login_at = now() WHERE id = %s RETURNING id", (user_id,))
+
+
+async def start_or_continue_visit(user_id: UUID, pause_minutes: int) -> datetime | None:
+    """Noterer at brugeren er på dashboardet, og giver hvornår det forrige besøg sluttede.
+
+    Har brugeren ikke været aktiv i `pause_minutes`, begynder et nyt besøg: det gamle "sidst
+    set" bliver til "forrige besøg". Ellers er det samme besøg, og "forrige besøg" står stille,
+    så "Nye siden sidst" ikke springer til 0, bare fordi siden genindlæses.
+
+    Sker i én UPDATE, så to faner der åbnes samtidig ikke kan rykke markøren forkert. I SET
+    ser Postgres de GAMLE værdier, så CASE sammenligner med det tidligere "sidst set".
+    None betyder at brugeren aldrig har været inde før (alt er nyt).
+    """
+    row = await fetch_one_required(
+        """
+        UPDATE users
+           SET previous_reviews_seen_at = CASE
+                 WHEN reviews_seen_at IS NULL OR reviews_seen_at < now() - make_interval(mins => %s)
+                 THEN reviews_seen_at
+                 ELSE previous_reviews_seen_at
+               END,
+               reviews_seen_at = now()
+         WHERE id = %s
+        RETURNING previous_reviews_seen_at
+        """,
+        (pause_minutes, user_id),
+    )
+    return row["previous_reviews_seen_at"]
 
 
 async def list_with_restaurants() -> list[dict]:

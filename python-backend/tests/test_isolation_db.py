@@ -8,6 +8,7 @@ import pytest
 from tests.conftest import (
     FakeClaude,
     as_user,
+    db_execute,
     db_rows,
     google_ok,
     make_customer,
@@ -146,6 +147,43 @@ def test_two_users_at_the_same_cafe_share_it_and_nobody_else_does(client):
 
     as_user(client, other)
     assert client.get("/api/reviews").json()["reviews"] == []
+
+
+def test_each_user_has_their_own_new_since_last_visit(client):
+    # To ejere af samme café er inde på forskellige tidspunkter. Den enes besøg må ikke få
+    # anmeldelserne til at se "set" ud for den anden, og en anden café rører ingen af dem.
+    owner = make_customer(client, email="ejer@test.dk", name="Café A", place_id="ChIJa")
+    partner = make_customer(client, email="partner@test.dk", name="Café A", place_id="ChIJa")
+    other = make_customer(client, email="b@test.dk", name="Café B", place_id="ChIJb")
+
+    as_user(client, owner)
+    use_google(client, google_ok(place("ChIJa", "Café A")))
+    client.post("/api/reviews/refresh", json={})
+    # Importen var for 3 timer siden. En ny anmeldelse kom for 100 minutter siden, og ejeren
+    # var inde for 70 minutter siden. Ejeren har altså set den, partneren har ikke.
+    db_execute(client, "UPDATE reviews SET created_at = now() - interval '3 hours'")
+    db_execute(client, "UPDATE restaurants SET first_import_at = now() - interval '3 hours'")
+    db_execute(
+        client,
+        "INSERT INTO reviews (restaurant_id, external_id, rating, created_at) "
+        "VALUES (%s, 'places/ChIJa/reviews/r3', 4, now() - interval '100 minutes')",
+        (owner["restaurant_id"],),
+    )
+    db_execute(
+        client, "UPDATE users SET reviews_seen_at = now() - interval '70 minutes' WHERE id = %s", (owner["user_id"],)
+    )
+
+    def new_ones():
+        return [r["externalId"] for r in client.get("/api/reviews").json()["reviews"] if r["newSinceLastVisit"]]
+
+    as_user(client, owner)
+    assert new_ones() == []
+
+    as_user(client, other)
+    assert client.get("/api/reviews").json()["reviews"] == []
+
+    as_user(client, partner)
+    assert new_ones() == ["places/ChIJa/reviews/r3"]
 
 
 # ---- indstillinger for svar ------------------------------------------------------

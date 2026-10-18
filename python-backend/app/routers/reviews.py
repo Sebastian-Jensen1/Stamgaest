@@ -15,7 +15,7 @@ from app.core.config import Settings
 from app.core.deps import CurrentUser, get_http, get_places_key, get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import describe_wait
-from app.models import replies, restaurants, reviews, usage
+from app.models import replies, restaurants, reviews, usage, users
 from app.schemas.reviews import DashboardResponse, OkResponse, SendReplyRequest
 from app.services import places_service, usage_service
 
@@ -26,7 +26,25 @@ router = APIRouter()
 REFRESH_COOLDOWN_SECONDS = 60
 
 
-def _dashboard(restaurant: dict, rows: list[dict]) -> dict:
+# Så længe skal en bruger have været væk, før næste besøg tæller som et nyt. Kortere, og "Nye
+# siden sidst" ville nulstilles mens ejeren er midt i at svare. Længere, og tallet ville hænge ved.
+VISIT_PAUSE_MINUTES = 60
+
+
+def _is_new(row: dict, first_import: datetime | None, last_visit: datetime | None) -> bool:
+    """Er anmeldelsen kommet ind hos os efter caféens import og efter brugerens forrige besøg?
+
+    Vi bruger hvornår VI fik den (created_at), ikke hvornår den blev skrevet på Google. Google
+    sender de 5 mest "relevante", så en gammel anmeldelse kan dukke op for første gang i dag,
+    og den har ejeren aldrig set. Det der kom med den allerførste hentning, er derimod det
+    caféen havde i forvejen, så det tæller aldrig som nyt.
+    """
+    if first_import is None or row["created_at"] <= first_import:
+        return False
+    return last_visit is None or row["created_at"] > last_visit
+
+
+def _dashboard(restaurant: dict, rows: list[dict], last_visit: datetime | None) -> dict:
     """Bygger svaret med café-oplysninger og anmeldelser, klar til frontenden."""
     return {
         "restaurant_id": restaurant["id"],
@@ -36,7 +54,13 @@ def _dashboard(restaurant: dict, rows: list[dict]) -> dict:
         "rating": restaurant["google_rating"],
         "user_rating_count": restaurant["google_rating_count"],
         "reviews_fetched_at": restaurant["reviews_fetched_at"],
-        "reviews": [reviews.to_client_review(row) for row in rows],
+        "reviews": [
+            {
+                **reviews.to_client_review(row),
+                "new_since_last_visit": _is_new(row, restaurant["first_import_at"], last_visit),
+            }
+            for row in rows
+        ],
     }
 
 
@@ -52,8 +76,9 @@ async def _own_restaurant(user: dict) -> dict:
 async def my_reviews(user: CurrentUser):
     """GET /api/reviews  Din cafés oplysninger og alle dens gemte anmeldelser. Henter intet fra Google."""
     restaurant = await _own_restaurant(user)
+    last_visit = await users.start_or_continue_visit(user["user_id"], VISIT_PAUSE_MINUTES)
     rows = await reviews.list_by_restaurant(restaurant["id"])
-    return _dashboard(restaurant, rows)
+    return _dashboard(restaurant, rows, last_visit)
 
 
 @router.post("/reviews/refresh", response_model=DashboardResponse)
@@ -111,9 +136,11 @@ async def refresh_reviews(
     await usage.finish(event_ids[0])
 
     # Læs ALT tilbage fra databasen, også ældre anmeldelser som Google ikke længere sender.
+    # Samme besøg som da siden blev åbnet, så de netop hentede tæller som nye.
+    last_visit = await users.start_or_continue_visit(user["user_id"], VISIT_PAUSE_MINUTES)
     rows = await reviews.list_by_restaurant(restaurant["id"])
     fresh = await _own_restaurant(user)
-    return _dashboard(fresh, rows)
+    return _dashboard(fresh, rows, last_visit)
 
 
 @router.post("/reviews/{review_id}/send", response_model=OkResponse)

@@ -1150,7 +1150,8 @@
   });
 
   function updateStats() {
-    $("statNew").textContent = reviews.filter(r => r.status === "new").length;
+    // Anmeldelser der er kommet til siden dit forrige besøg (serveren afgør det, se reviews.py).
+    $("statNew").textContent = reviews.filter(r => r.newSinceLastVisit).length;
     $("statTotal").textContent = reviews.length;
     $("statSent").textContent = reviews.filter(r => r.status === "sent").length;
   }

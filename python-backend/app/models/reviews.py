@@ -80,6 +80,12 @@ async def upsert_many(restaurant_id: UUID, reviews: Sequence) -> list[dict]:
                 ),
             )
             saved.append(await cursor.fetchone())
+        # Den første hentning med anmeldelser er caféens import. now() er det samme tidspunkt i
+        # hele transaktionen, så created_at på importens anmeldelser er præcis lig first_import_at.
+        await conn.execute(
+            "UPDATE restaurants SET first_import_at = COALESCE(first_import_at, now()) WHERE id = %s",
+            (restaurant_id,),
+        )
     return saved
 
 

@@ -33,7 +33,10 @@
   - Kunden skal kunne slå den fra og vælge grænsen (fx kun 1 stjerne).
   - Begrænsning: Places API giver kun 5 anmeldelser pr. sted, valgt efter "relevans", ikke de nyeste.
     En ny dårlig anmeldelse kan derfor mangle. Løses først rigtigt med #7.
-- [ ] **#5 Skift adgangskode/mail når man er logget ind**, med bekræftelsesmail ved ændring.
+- [ ] **#5 Skift mail når man er logget ind, og bekræftelsesmail ved ændringer.**
+  - Skift adgangskode findes allerede (`POST /api/auth/password` og "Skift adgangskode" i dashboardet).
+  - Mangler: skift af mail (den nye adresse bekræftes via et link, før den gælder), og en mail til
+    den gamle adresse når adgangskode eller mail ændres, så den rigtige ejer opdager en overtagelse.
 
 ## Produktforbedringer
 
@@ -41,6 +44,28 @@
   vendinger, ting der aldrig skal siges, og underskrift (cafénavn/ejernavn).
 - [ ] **#7 Svar direkte på Google** via Business Profile API, så man slipper for copy-paste.
   Kræver Googles godkendelse, så ansøgningen bør startes tidligt.
+  - **Ikke sendt endnu.** Kræver en verificeret profil der har været aktiv i 60+ dage, og Google kan
+    sige nej. Byg ikke salget på funktionen, før ansøgningen er godkendt.
+  - Hver café skal selv koble sin Google-konto til (OAuth). Ejes profilen af et bureau eller en
+    anden konto end ejerens, bliver det bøvlet. Spørg om det ved salget.
+  - **Alle anmeldelser, ikke kun 5.** En stor kunde kan have tusindvis. Det betyder:
+    - Første import kører i baggrunden med en statusbesked, ikke mens ejeren venter på et klik.
+    - Senere hentninger henter kun det der er ændret siden sidst (sorteret efter `updateTime`).
+    - `GET /api/reviews` sender i dag alt i ét svar. Dashboardet skal deles op i sider.
+    - "Nye siden sidst" tæller allerede ikke importen med (`first_import_at`), så det er klar.
+  - **Filter: kun de seneste 90 dage som standard**, med "Vis ældre" og mulighed for at vælge
+    perioden. Et filter i visningen, ikke en grænse ved import, så intet forsvinder. Bygges først
+    med #7: i dag sender Places 5 "relevante", som kan være ældre end 90 dage, så et filter nu kunne
+    give et tomt dashboard.
+  - **Allerede besvarede:** hver anmeldelse kommer med ejerens svar (`reviewReply`). Hent dem, men
+    gem dem som besvarede med svarteksten. De vises under "Besvarede", tæller ikke som nye og får
+    aldrig et udkast. Vi skal kende dem for at genkende dem næste gang. Svarer ejeren direkte på
+    Google mellem to hentninger, ser vi det først ved næste hentning.
+  - **Bedre tone:** caféens egne tidligere svar er de bedste eksempler for Claude. Vælg de gode ud
+    (nyere, længere, forskellige stjerner), for dårlige svar lærer Claude også. Mål forskellen med
+    `evals.compare` og rettelses-måleren i stedet for at gætte.
+  - **Persondata:** gem alle ubesvarede, men af de gamle besvarede kun de ca. 100 seneste, som
+    bruges til tonen.
 - [ ] **#8 Auto-hent nye anmeldelser** med et baggrundsjob i stedet for kun ved oprettelse.
   - Kræver #16 (serveren skal køre hele tiden). Hver hentning koster et Places-kald pr. café.
 - [ ] **#9 Statistik**: gennemsnit over tid, hyppige emner ("ventetid", "kaffe"), stemning.
