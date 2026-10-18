@@ -29,7 +29,10 @@ router = APIRouter()
 
 
 def _client_ip(request: Request) -> str:
-    """Giver IP-adressen på den der kalder (bruges til at begrænse gætte-forsøg)."""
+    """Giver IP-adressen på den der kalder (bruges til at begrænse gætte-forsøg).
+
+    Bag en kendt proxy er det kundens rigtige IP, ikke proxyens (se ProxyHeadersMiddleware i main.py).
+    """
     return request.client.host if request.client else "ukendt"
 
 

@@ -284,6 +284,7 @@ Der er to slags tests. Ingen af dem koster penge eller rører jeres rigtige data
 
 - **Uden database** (`tests/test_unit.py`): validering, sikkerhedsheaders, prompten og caféens profil i den,
   TLS-opsætningen, adgangskoder, begrænsning af gætte-forsøg og at alle endpoints kræver login.
+  `tests/test_hosting.py` tester `HOST`, `TRUSTED_PROXIES`, health check og at en falsk IP ignoreres.
 - **Med database** (`tests/test_*_db.py`): kundens hele flow (`test_api_db`), login og
   sessioner (`test_auth_db`), **at en kunde aldrig kan se eller ændre en anden kundes data**
   (`test_isolation_db`), admin-værktøjet (`test_admin_db`), glemt adgangskode og invitation,
@@ -341,14 +342,41 @@ noget andet: det kalder den rigtige Claude og køres kun, når du selv starter d
 
 **Før en rigtig kunde bruger det, skal disse ting på plads:**
 
-- **Hosting med HTTPS**, og `COOKIE_SECURE=1` i `.env`, så cookien kun sendes over HTTPS.
-  Serveren binder i dag kun til `127.0.0.1`, og `ALLOWED_HOSTS` skal sættes til jeres domæne.
-- **Kører serveren bag en proxy** (som de fleste hosts), ser den proxyens IP i stedet for
-  kundens, og grænsen for gætte-forsøg pr. IP virker så ikke rigtigt. Det skal løses ved opsætning.
+- **Hosting med HTTPS**, og `COOKIE_SECURE=1`, så cookien kun sendes over HTTPS. Koden er klar
+  (se "Hosting" herunder), men selve hosten er ikke sat op endnu.
 - **Tællerne til gætte-forsøg ligger i hukommelsen.** De nulstilles ved genstart og virker kun i
   én proces. Kører I flere processer, skal de flyttes til databasen.
 - **Mailafsenderen skal bekræftes hos Resend** (SPF/DKIM i Cloudflare), før "glemt adgangskode" kan
   sende til kunder. Se "Glemt adgangskode (mail)" ovenfor.
+
+### Hosting
+
+Koden er klar til at køre hos en host (fx Render). Det styres af disse indstillinger:
+
+| Indstilling | Standard | Hos hosten |
+| --- | --- | --- |
+| `HOST` | `127.0.0.1` (kun denne maskine) | `0.0.0.0`, så hostens proxy kan nå serveren |
+| `PORT` | `3000` | Sættes af hosten selv (Render bruger `10000`) |
+| `TRUSTED_PROXIES` | `127.0.0.1` | Hostens interne net og `cloudflare`, fx `10.0.0.0/8,cloudflare` |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | `app.stamgaest.com` (og evt. hostens egen adresse) |
+| `COOKIE_SECURE` / `APP_BASE_URL` | slukket / localhost | `1` / `https://app.stamgaest.com` |
+
+- **Serveren nægter at starte** med en anden `HOST` end 127.0.0.1, hvis `COOKIE_SECURE=1` ikke er
+  sat. Ellers kunne adgangskoder sendes ukrypteret over netværket.
+- **Kundens rigtige IP:** bag en proxy ser serveren proxyens IP. Den læser derfor kundens IP fra
+  `X-Forwarded-For`, men kun når kaldet kommer fra en adresse i `TRUSTED_PROXIES`. Listen læses
+  bagfra, og den første adresse der ikke er en kendt proxy, er kunden. En falsk IP, som en
+  angriber selv skriver i headeren, bliver derfor ignoreret. `*` ("stol på alle") er ikke tilladt.
+  `cloudflare` tilføjer Cloudflares net (listen står i `core/config.py`, tjek den ved flytningen).
+- **Vi bruger ikke `CF-Connecting-IP`.** Den kan skrives af hvem som helst, der kalder hostens
+  adresse direkte uden om Cloudflare. `X-Forwarded-For` læst bagfra giver det samme, sikkert.
+- **Health check:** `GET /api/health` svarer `{"status": "ok"}` uden login. Den spørger ikke
+  databasen, så hostens hyppige tjek ikke holder den fælles Neon-database vågen.
+- Serveren sender ikke en `server`-header, så den ikke fortæller hvad vi kører.
+
+Ved flytningen: find ud af hvilke adresser hostens proxy kalder fra (står i hostens
+dokumentation), og skriv dem i `TRUSTED_PROXIES`. Tjek derefter i loggen at et forkert login
+viser din egen IP, ikke proxyens.
 
 ## Vejen til "1-knap send direkte til Google"
 
@@ -399,7 +427,7 @@ se afsnittet ovenfor.
 
 ## Hjemmesiden (stamgaest.com)
 
-Mappen `website/` er den offentlige forside med privatlivspolitik. Den er ren HTML og CSS uden
+Mappen `stamgaest-website/` er den offentlige forside med privatlivspolitik. Den er ren HTML og CSS uden
 build-trin og er adskilt fra appen (`public/`), som er selve login og dashboard.
 
 Se den lokalt (fra projektets rod):
@@ -424,7 +452,7 @@ review-assistant/
     │   ├── main.py              # Selve appen: samler routes, sikkerhed og opstart
     │   ├── __main__.py          # Startknap: uv run python -m app
     │   ├── admin.py             # Vores værktøj til at oprette kunder (uv run python -m app.admin)
-    │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate, reply_settings
+    │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate, reply_settings, health
     │   ├── schemas/             # Tjekker og former data ind og ud
     │   ├── services/            # Claude (udkast og profil fra hjemmeside), Google Places, mail, lofter og login
     │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens, usage, reply_settings)
@@ -442,11 +470,12 @@ indeholder både API-nøgler og adgangskoden til databasen.
 
 ## API-endpoints
 
-Alle endpoints undtagen login, logout og glemt adgangskode kræver, at man er logget ind. Hvilken café det gælder,
+Alle endpoints undtagen health, login, logout og glemt adgangskode kræver, at man er logget ind. Hvilken café det gælder,
 ved serveren ud fra login, og den kan aldrig angives i kaldet.
 
 | Metode | Sti | Hvad den gør |
 | --- | --- | --- |
+| `GET` | `/api/health` | Svarer `{"status": "ok"}`, så hosten kan se at serveren kører. Kræver ikke login. |
 | `POST` | `/api/auth/login` | Logger ind (e-mail og adgangskode) og sætter cookien. |
 | `POST` | `/api/auth/logout` | Sletter sessionen. |
 | `GET` | `/api/auth/me` | Hvem er logget ind, og hvilken café. Siden bruger den ved opstart. |

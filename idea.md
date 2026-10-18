@@ -77,7 +77,8 @@
     Samme region som Neon, Python 3.14 og uv er indbygget (ingen Dockerfile), offentlig DPA og
     EU-US Data Privacy Framework. Alternativer: Fly.io (Frankfurt, mere teknisk), Railway (Amsterdam,
     DPA ikke fundet).
-  - Kodeændringer der kan laves gratis før (gør selve flytningen hurtig):
+  - Kodeændringer der kan laves gratis før (gør selve flytningen hurtig). **Færdige** (`HOST`,
+    `TRUSTED_PROXIES` og `/api/health`, se README "Hosting"):
     - Serveren lytter kun på `127.0.0.1` (`app/__main__.py`). Skal kunne lytte på `0.0.0.0` og hostens port
       via en indstilling. Kommentaren dér ("der er intet login") er forældet.
     - Rigtig IP bag proxy (`X-Forwarded-For`/`CF-Connecting-IP`, kun fra kendte proxyer).

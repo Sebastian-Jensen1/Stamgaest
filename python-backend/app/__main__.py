@@ -10,12 +10,25 @@ from app.core.config import load_settings
 
 
 def main() -> None:
-    """Starter serveren på den port der står i .env (standard 3000)."""
+    """Starter serveren på den adresse og port der står i .env (standard 127.0.0.1:3000)."""
     settings = load_settings()
-    print(f"Stamgæst kører på http://localhost:{settings.port}")
-    # 127.0.0.1 betyder "kun denne maskine". Der er intet login, så serveren må ikke
-    # kunne nås fra andre computere på netværket.
-    uvicorn.run("app.main:app", host="127.0.0.1", port=settings.port, log_level="info")
+    if settings.host == "127.0.0.1":
+        print(f"Stamgæst kører på http://localhost:{settings.port}")
+    else:
+        print(f"Stamgæst lytter på {settings.host}:{settings.port} ({settings.app_base_url})")
+    # Som standard lytter serveren kun på 127.0.0.1 ("kun denne maskine"). Hos en host sættes
+    # HOST=0.0.0.0, så hostens proxy kan nå den. Det kræver HTTPS foran (se config.py).
+    uvicorn.run(
+        "app.main:app",
+        host=settings.host,
+        port=settings.port,
+        log_level="info",
+        # Kundens rigtige IP læses i appen selv (ProxyHeadersMiddleware i main.py), kun fra de
+        # proxyer der står i TRUSTED_PROXIES. Uvicorn skal ikke også gøre det med sine egne regler.
+        proxy_headers=False,
+        # Fortæl ikke omverdenen hvilken server vi kører. Det hjælper kun en angriber.
+        server_header=False,
+    )
 
 
 if __name__ == "__main__":
