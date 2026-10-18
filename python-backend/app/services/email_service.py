@@ -6,6 +6,8 @@ fejlen fra Resend må aldrig nå browseren, så alt her logges og sluges.
 """
 
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -79,3 +81,23 @@ async def send_invitation(
         "Venlig hilsen\nStamgæst"
     )
     return await send_email(http, settings, to=to, subject="Velkommen til Stamgæst: vælg din adgangskode", text=text)
+
+
+async def send_password_changed(http: httpx.AsyncClient, settings: Settings, *, to: str, when: datetime) -> bool:
+    """Fortæller kunden at adgangskoden lige er ændret.
+
+    Er det ikke kunden selv, er det tegn på at en anden har fået adgang. Mailen går til kontoens
+    adresse, som den anden ikke kan ændre, så den rigtige ejer opdager det og kan tage kontoen
+    tilbage med "Glemt adgangskode". Mailen indeholder bevidst intet link der giver adgang.
+    """
+    local = when.astimezone(ZoneInfo("Europe/Copenhagen"))
+    text = (
+        "Hej\n\n"
+        f"Adgangskoden til din Stamgæst-konto blev ændret den {local:%d.%m.%Y} kl. {local:%H:%M}.\n\n"
+        "Var det dig, behøver du ikke gøre noget.\n\n"
+        "Var det ikke dig, så gå til siden herunder med det samme og tryk \"Glemt adgangskode\". "
+        "Når du vælger en ny adgangskode, bliver alle andre logget ud:\n"
+        f"{settings.app_base_url}\n\n"
+        "Venlig hilsen\nStamgæst"
+    )
+    return await send_email(http, settings, to=to, subject="Din adgangskode til Stamgæst er ændret", text=text)

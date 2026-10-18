@@ -23,7 +23,7 @@ async def create(*, token_hash: str, user_id: UUID, expires_at: datetime) -> Non
 
 
 async def use(token_hash: str) -> dict | None:
-    """Bruger et link: giver brugerens id og e-mail, eller None hvis linket ikke kan bruges.
+    """Bruger et link: giver brugerens id, e-mail og invite_pending, eller None hvis linket ikke kan bruges.
 
     Et link kan ikke bruges hvis det er ukendt, udløbet, allerede brugt, eller brugeren er slået fra.
     Det hele sker i ÉN SQL-sætning, så to der klikker på samme link på samme tid ikke begge slipper
@@ -39,7 +39,7 @@ async def use(token_hash: str) -> dict | None:
            AND t.used_at IS NULL
            AND t.expires_at > now()
            AND u.is_active
-        RETURNING u.id AS user_id, u.email
+        RETURNING u.id AS user_id, u.email, u.invite_pending
         """,
         (token_hash,),
     )
