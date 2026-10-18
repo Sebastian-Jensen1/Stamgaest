@@ -120,6 +120,22 @@ tilbage. Kan en kunde ikke få mail, kan `--show-password` vise en adgangskode �
 | `ai-off --restaurant-id …` / `ai-on --restaurant-id …` | Nødbremse: slår udkast fra Claude fra/til for én café med det samme |
 | `stats [--days N] [--restaurant-id …]` | Hvor meget kunderne retter i Claudes udkast før de sender, og de mest rettede eksempler. Kun til os |
 
+## "Nye siden sidst"
+
+Tallet på dashboardet viser de anmeldelser, der er kommet ind hos os siden brugerens forrige besøg.
+
+- **Den første hentning er en import**, ikke noget nyt. Det caféen havde i forvejen, tæller aldrig
+  med, så en ny kunde ikke ser alle sine anmeldelser som "nye" (`restaurants.first_import_at`).
+- **Pr. bruger:** to ejere af samme café har hver deres tal (kolonnerne `reviews_seen_at` og
+  `previous_reviews_seen_at` på `users`, migration 008).
+- **Et besøg** slutter efter 1 times pause (`VISIT_PAUSE_MINUTES` i `routers/reviews.py`). Så
+  nulstilles tallet ikke, bare fordi siden genindlæses, mens ejeren er i gang med at svare.
+- **"Kommet ind hos os"** betyder hvornår vi hentede anmeldelsen, ikke hvornår den blev skrevet.
+  Google sender de 5 mest "relevante", så en gammel anmeldelse kan dukke op for første gang.
+- En anmeldelse tæller med resten af besøget, også når den er besvaret. Hvad der mangler svar,
+  viser fanen "Nye / ubesvarede".
+- Første gang en bruger er inde, er alt der er kommet til efter importen nyt.
+
 ## Svar skræddersyet til hver café
 
 Hver café har sine egne **"Indstillinger for svar"** (knappen øverst i dashboardet åbner en
@@ -421,7 +437,6 @@ se afsnittet ovenfor.
 
 - **Hosting og HTTPS** samt de øvrige punkter under "Før en rigtig kunde bruger det" i afsnittet "Sikkerhed".
 - **Log ind med Google** (og adgang til alle anmeldelser og direkte svar) kræver godkendelse til Business Profile API. Login med e-mail er lavet, så det kan kobles på senere uden at kunderne mærker det.
-- **"Nye siden sidst"-tælleren** tæller nu de anmeldelser der reelt står som ubesvarede i databasen. Den mangler stadig at tage højde for *hvornår ejeren sidst var inde* — så "ny" betyder "ikke besvaret endnu", ikke "kommet til siden dit sidste besøg".
 - **Flere caféer pr. bruger** (fx en kæde): i dag hører en bruger til præcis én café. Flere brugere kan dele en café.
 - **Betaling**: Stripe-integration til abonnement, hvis I vil automatisere fakturering.
 
@@ -482,7 +497,7 @@ ved serveren ud fra login, og den kan aldrig angives i kaldet.
 | `POST` | `/api/auth/password` | Skifter adgangskode og logger andre enheder ud. |
 | `POST` | `/api/auth/forgot-password` | Sender et link til at vælge ny adgangskode, hvis e-mailen findes. Svarer altid ens. |
 | `POST` | `/api/auth/reset-password` | Vælger ny adgangskode med nøglen fra mailen og logger ud alle steder. |
-| `GET` | `/api/reviews` | Din cafés oplysninger og alle dens gemte anmeldelser (henter intet fra Google). |
+| `GET` | `/api/reviews` | Din cafés oplysninger og alle dens gemte anmeldelser (henter intet fra Google). Hver anmeldelse har `newSinceLastVisit`. |
 | `POST` | `/api/reviews/refresh` | Henter fra Google for **din** café, gemmer, og svarer med det der nu står i databasen. Højst en gang i minuttet. |
 | `POST` | `/api/generate` | Genererer udkast med Claude for de valgte anmeldelser og gemmer dem i `replies`. |
 | `POST` | `/api/reviews/{id}/send` | Gemmer den tekst der faktisk blev sendt, og markerer anmeldelsen besvaret. |

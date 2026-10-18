@@ -27,6 +27,8 @@ class ClientReview(CamelModel):
     published_at: datetime | None
     status: Literal["new", "ready", "sent"]
     draft: str
+    # Kom anmeldelsen til efter brugerens forrige besøg? Bruges til "Nye siden sidst".
+    new_since_last_visit: bool
 
 
 class DashboardResponse(CamelModel):

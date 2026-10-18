@@ -14,6 +14,7 @@ from tests.conftest import (
     PLACE,
     FakeClaude,
     allow_refresh_now,
+    db_execute,
     db_rows,
     google_ok,
     logged_in,
@@ -44,7 +45,7 @@ def seed(client, **kwargs):
 
 def test_migrations_apply_once_and_are_idempotent(migration_result):
     first, second = migration_result
-    assert first == 7  # 001-007 (init, auth, password_tokens, invitations, usage, reply_profiles, reply_profile_v2)
+    assert first == 8  # 001-008 (init, auth, password_tokens, invitations, usage, reply_profiles, reply_profile_v2, reviews_seen)
     assert second == 0  # næste kørsel gør ingenting
 
 
@@ -159,6 +160,89 @@ def test_cafe_without_google_link_gets_a_clear_message(client):
 def test_google_review_text_is_stored_verbatim_and_escaping_is_left_to_the_frontend(client):
     _, reviews = seed(client)
     assert reviews["r2"]["reviewerName"] == "<img src=x onerror=alert(1)>"
+
+
+# ---- "Nye siden sidst" -----------------------------------------------------------
+
+R3 = {
+    "name": "places/ChIJtest/reviews/r3",
+    "authorAttribution": {"displayName": "Bo"},
+    "rating": 2,
+    "text": {"text": "Lang ventetid."},
+    # Skrevet for længe siden. Den er alligevel ny for ejeren, for vi har aldrig vist den før.
+    "publishTime": "2025-01-01T10:00:00Z",
+}
+
+
+def new_flags(data):
+    return {key: r["newSinceLastVisit"] for key, r in by_external_id(data).items()}
+
+
+def come_back_later(client, customer):
+    """Lader som om importen var for 3 timer siden, og kunden sidst var inde for 2 timer siden."""
+    db_execute(client, "UPDATE reviews SET created_at = now() - interval '3 hours'")
+    db_execute(client, "UPDATE restaurants SET first_import_at = now() - interval '3 hours'")
+    db_execute(
+        client, "UPDATE users SET reviews_seen_at = now() - interval '2 hours' WHERE id = %s", (customer["user_id"],)
+    )
+
+
+def add_r3(client):
+    """Henter igen, og nu har Google en tredje anmeldelse."""
+    allow_refresh_now(client)
+    use_google(client, google_ok({**PLACE, "reviews": [*PLACE["reviews"], R3]}))
+    return refresh(client).json()
+
+
+def test_the_first_import_is_not_new(client):
+    # En ny kunde med mange anmeldelser skal ikke se dem alle som "nye" første gang.
+    _, saved = seed(client)
+    assert {r["newSinceLastVisit"] for r in saved.values()} == {False}
+    assert new_flags(client.get("/api/reviews").json()) == {"r1": False, "r2": False}
+
+
+def test_a_review_after_the_import_is_new(client):
+    seed(client)
+    assert new_flags(add_r3(client)) == {"r1": False, "r2": False, "r3": True}
+
+
+def test_after_a_break_only_reviews_that_came_since_are_new(client):
+    customer, _ = seed(client)
+    come_back_later(client, customer)
+    assert new_flags(client.get("/api/reviews").json()) == {"r1": False, "r2": False}
+    assert new_flags(add_r3(client)) == {"r1": False, "r2": False, "r3": True}
+
+
+def test_reloading_the_page_does_not_reset_the_count(client):
+    customer, _ = seed(client)
+    come_back_later(client, customer)
+    add_r3(client)
+    for _ in range(3):
+        assert new_flags(client.get("/api/reviews").json())["r3"] is True
+
+
+def test_answering_a_new_review_keeps_it_counted_for_the_rest_of_the_visit(client):
+    # Tallet siger hvad der er kommet til, ikke hvad der mangler svar (det viser fanen "Nye / ubesvarede").
+    customer, _ = seed(client)
+    come_back_later(client, customer)
+    r3 = by_external_id(add_r3(client))["r3"]
+    assert client.post(f"/api/reviews/{r3['id']}/answered").status_code == 200
+    assert new_flags(client.get("/api/reviews").json())["r3"] is True
+
+
+def test_on_the_next_visit_what_was_new_is_seen(client):
+    customer, _ = seed(client)
+    add_r3(client)
+    come_back_later(client, customer)
+    assert new_flags(client.get("/api/reviews").json()) == {"r1": False, "r2": False, "r3": False}
+
+
+def test_a_fetch_without_reviews_is_not_the_import(client):
+    # Sender Google ingen anmeldelser første gang, er importen ikke sket endnu.
+    logged_in(client)
+    use_google(client, google_ok({**PLACE, "reviews": []}))
+    refresh(client)
+    assert db_rows(client, "SELECT first_import_at FROM restaurants")[0][0] is None
 
 
 # ---- fejl fra Google -------------------------------------------------------------
