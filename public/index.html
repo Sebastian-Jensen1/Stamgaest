@@ -148,8 +148,8 @@
     padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
   }
   .setup .refresh button:disabled { opacity: 0.5; cursor: not-allowed; }
-  #pwPanel form { display: grid; gap: 10px; max-width: 360px; margin-top: 10px; }
-  #pwPanel summary { cursor: pointer; font-size: 13px; }
+  #pwPanel form, #emailPanel form { display: grid; gap: 10px; max-width: 360px; margin-top: 10px; }
+  #pwPanel summary, #emailPanel summary { cursor: pointer; font-size: 13px; }
   .ok { color: var(--success); font-size: 13px; margin: 6px 0; }
 
   /* ---- Indstillingssiden: følger DESIGN_savvycal.md (Cream Paper-zonen) ----------------
@@ -349,6 +349,16 @@
         <div class="field-block" style="margin:0;"><label for="pwRepeat">Gentag ny adgangskode</label><input id="pwRepeat" type="password" autocomplete="new-password" required /></div>
         <div id="pwMessage" class="error" role="alert"></div>
         <button class="btn-primary" type="submit" style="width:auto;">Gem ny adgangskode</button>
+      </form>
+    </details>
+
+    <details class="panel" id="emailPanel">
+      <summary>Skift e-mail</summary>
+      <form id="emailForm" autocomplete="off">
+        <div class="field-block" style="margin:0;"><label for="emailNew">Ny e-mail</label><input id="emailNew" type="email" autocomplete="email" maxlength="254" required /></div>
+        <div class="field-block" style="margin:0;"><label for="emailPassword">Nuværende adgangskode</label><input id="emailPassword" type="password" autocomplete="current-password" required /></div>
+        <div id="emailMessage" class="error" role="alert"></div>
+        <button class="btn-primary" id="emailBtn" type="submit" style="width:auto;">Send bekræftelseslink</button>
       </form>
     </details>
 
@@ -570,6 +580,8 @@
     $("forgotView").hidden = true;
     $("resetView").hidden = true;
     clearSettings();
+    $("emailMessage").textContent = "";
+    $("emailPanel").open = false;
     $("loginView").hidden = false;
     $("loginError").className = "error";
     $("loginError").textContent = message || "";
@@ -608,6 +620,11 @@
     const fromMail = location.hash.match(/^#nulstil=([A-Za-z0-9_-]+)$/);
     if (fromMail) {
       showReset(fromMail[1]);
+      return;
+    }
+    const newEmail = location.hash.match(/^#skiftmail=([A-Za-z0-9_-]+)$/);
+    if (newEmail) {
+      await confirmEmail(newEmail[1]);
       return;
     }
     try {
@@ -719,6 +736,62 @@
       msg.textContent = err.message;
     }
   });
+
+  $("emailForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("emailBtn");
+    const msg = $("emailMessage");
+    btn.disabled = true;
+    msg.className = "error";
+    msg.textContent = "";
+    try {
+      await api("POST", "/api/auth/email", {
+        newEmail: $("emailNew").value.trim(),
+        currentPassword: $("emailPassword").value,
+      });
+      $("emailForm").reset();
+      // Samme tekst uanset om adressen er ledig, ligesom serveren.
+      msg.className = "ok";
+      msg.textContent = "Vi har sendt et link til den nye e-mail. Åbn det for at bekræfte. Indtil da logger du ind med den gamle.";
+    } catch (err) {
+      msg.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Linket fra mailen (#skiftmail=...) bekræfter den nye e-mail. Som ved #nulstil fjernes nøglen
+  // fra adresselinjen med det samme. Det virker også, hvis man ikke er logget ind (fx på telefonen).
+  async function confirmEmail(token) {
+    history.replaceState(null, "", location.pathname + location.search);
+    let ok = true;
+    let text = "Din e-mail er skiftet. Fremover logger du ind med den nye.";
+    try {
+      await api("POST", "/api/auth/confirm-email", { token });
+    } catch (err) {
+      ok = false;
+      text = err.message;
+    }
+    let me;
+    try {
+      me = await api("GET", "/api/auth/me");
+    } catch (err) {
+      // Ikke logget ind: api() har allerede vist loginsiden, så beskeden står dér.
+      if (err.status !== 401) showLogin();
+      $("loginError").className = ok ? "ok" : "error";
+      $("loginError").textContent = text;
+      return;
+    }
+    showApp(me);
+    $("emailPanel").open = true;
+    $("emailMessage").className = ok ? "ok" : "error";
+    $("emailMessage").textContent = text;
+    try {
+      await loadDashboard();
+    } catch (err) {
+      if (err.status !== 401) errorDiv.textContent = err.message;
+    }
+  }
 
   // ---- Indstillinger for svar (egen side) ---------------------------------------
   //

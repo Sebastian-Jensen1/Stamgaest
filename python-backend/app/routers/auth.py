@@ -1,19 +1,22 @@
-"""Endpoints til login: log ind, log ud, hvem er jeg, skift adgangskode og glemt adgangskode."""
+"""Endpoints til login: log ind, log ud, hvem er jeg, skift adgangskode, glemt adgangskode og skift e-mail."""
 
 from datetime import datetime, timezone
 
 import logging
 
 import httpx
+import psycopg
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 
 from app.core.config import Settings
 from app.core.deps import CurrentUser, get_http, get_limits, get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import Limits, describe_wait
-from app.models import password_tokens, restaurants, sessions, users
+from app.models import email_changes, password_tokens, restaurants, sessions, users
 from app.schemas.auth import (
+    ChangeEmailRequest,
     ChangePasswordRequest,
+    ConfirmEmailRequest,
     ForgotPasswordRequest,
     LoginRequest,
     MeResponse,
@@ -160,6 +163,8 @@ async def change_password(
 
     await users.update_password(user["user_id"], await auth_service.hash_password(body.new_password))
     await sessions.delete_for_user(user["user_id"], except_token_hash=user["token_hash"])
+    # Et ventende skift af e-mail kan være startet af en anden med den gamle adgangskode.
+    await email_changes.delete_for_user(user["user_id"])
     # Har en anden fået fat i en åben browser og skiftet koden, opdager den rigtige ejer det her.
     background.add_task(_send_password_changed_mail, http, settings, stored["email"])
     return OkResponse()
@@ -256,8 +261,124 @@ async def reset_password(
     await users.set_invite_pending(user["user_id"], False)  # kunden har nu valgt en adgangskode
     await sessions.delete_for_user(user["user_id"])
     await password_tokens.delete_for_user(user["user_id"])
+    # Tager kunden kontoen tilbage, må et skift af e-mail som en anden har startet, ikke kunne fuldføres.
+    await email_changes.delete_for_user(user["user_id"])
     limits.login_email.reset(auth_service.normalize_email(user["email"]))
     # En ny kunde der vælger sin FØRSTE adgangskode fra invitationen, har ikke ændret noget.
     if not user["invite_pending"]:
         background.add_task(_send_password_changed_mail, http, settings, user["email"])
+    return OkResponse()
+
+
+async def _send_email_change_mail(http: httpx.AsyncClient, settings: Settings, user_id, new_email: str) -> None:
+    """Sender bekræftelseslinket til den nye adresse, eller en besked hvis adressen allerede er i brug.
+
+    Køres EFTER svaret er sendt. Så tager svaret lige lang tid, uanset om adressen er ledig, og man
+    kan ikke bruge "skift e-mail" til at gætte hvem der er kunde.
+    """
+    try:
+        if await users.find_by_email(new_email) is not None:
+            await email_service.send_email_in_use(http, settings, to=new_email)
+            return
+        token = auth_service.new_email_token()
+        await email_changes.delete_expired()
+        await email_changes.create(
+            token_hash=auth_service.hash_token(token),
+            user_id=user_id,
+            new_email=new_email,
+            expires_at=datetime.now(timezone.utc) + auth_service.EMAIL_CHANGE_LIFETIME,
+        )
+        await email_service.send_email_change_confirmation(
+            http,
+            settings,
+            to=new_email,
+            token=token,
+            hours=int(auth_service.EMAIL_CHANGE_LIFETIME.total_seconds() // 3600),
+        )
+    except Exception:  # noqa: BLE001 - en baggrundsopgave har ingen at svare til, så fejlen logges
+        logger.exception("Kunne ikke sende mail om skift af e-mail")
+
+
+@router.post("/auth/email", response_model=OkResponse)
+async def change_email(
+    body: ChangeEmailRequest,
+    user: CurrentUser,
+    background: BackgroundTasks,
+    limits: Limits = Depends(get_limits),
+    settings: Settings = Depends(get_settings),
+    http: httpx.AsyncClient = Depends(get_http),
+):
+    """POST /api/auth/email  Sender et link til den nye e-mail. Den gælder først, når linket er åbnet.
+
+    Svarer ens, uanset om den nye adresse er ledig (se _send_email_change_mail).
+    """
+    email = user["email"]
+    user_key = str(user["user_id"])
+
+    new_email = auth_service.normalize_email(body.new_email)
+    problem = auth_service.validate_email(new_email)
+    if problem:
+        raise ApiError(400, problem)
+    if new_email == auth_service.normalize_email(email):
+        raise ApiError(400, "Det er allerede din e-mail.")
+
+    wait = limits.change_email.check(user_key) or limits.login_email.check(email)
+    if wait:
+        raise _too_many_attempts(wait)
+
+    # Adgangskoden kræves, så en der har fået fat i en åben browser ikke kan flytte kontoen til sig selv.
+    stored = await users.find_by_email(email)
+    if stored is None or not await auth_service.verify_password(body.current_password, stored["password_hash"]):
+        limits.login_email.record(email)
+        # 400 og ikke 401: en 401 ville få siden til at tro man var logget ud.
+        raise ApiError(400, "Adgangskoden er forkert.")
+
+    limits.change_email.record(user_key)
+    background.add_task(_send_email_change_mail, http, settings, user["user_id"], new_email)
+    return OkResponse()
+
+
+async def _send_email_changed_mail(http: httpx.AsyncClient, settings: Settings, old_email: str, new_email: str) -> None:
+    """Sender mailen "din e-mail er skiftet" til den gamle adresse. Køres efter svaret."""
+    try:
+        await email_service.send_email_changed(
+            http, settings, to=old_email, new_email=new_email, when=datetime.now(timezone.utc)
+        )
+    except Exception:  # noqa: BLE001 - en baggrundsopgave har ingen at svare til, så fejlen logges
+        logger.exception("Kunne ikke sende mail om skiftet e-mail")
+
+
+@router.post("/auth/confirm-email", response_model=OkResponse)
+async def confirm_email(
+    body: ConfirmEmailRequest,
+    request: Request,
+    background: BackgroundTasks,
+    limits: Limits = Depends(get_limits),
+    settings: Settings = Depends(get_settings),
+    http: httpx.AsyncClient = Depends(get_http),
+):
+    """POST /api/auth/confirm-email  Skifter e-mail med nøglen fra mailen. Kræver ikke login.
+
+    Kunden åbner måske linket på telefonen, hvor de ikke er logget ind. Nøglen er beviset.
+    """
+    ip = _client_ip(request)
+    wait = limits.reset_ip.check(ip)
+    if wait:
+        raise _too_many_attempts(wait)
+
+    try:
+        changed = await email_changes.use(auth_service.hash_token(body.token))
+    except psycopg.errors.UniqueViolation:
+        # Sjældent: en anden konto har fået adressen, efter linket blev sendt. Linket er ikke brugt op.
+        raise ApiError(400, "Den e-mail bruges allerede af en anden konto.") from None
+    if changed is None:
+        limits.reset_ip.record(ip)
+        # Samme besked uanset om linket er ukendt, udløbet eller brugt.
+        raise ApiError(400, "Linket virker ikke længere. Bed om et nyt.")
+
+    # Links til "glemt adgangskode" blev sendt til den gamle adresse, som kunden måske ikke har længere.
+    await password_tokens.delete_for_user(changed["user_id"])
+    await email_changes.delete_for_user(changed["user_id"])
+    limits.login_email.reset(auth_service.normalize_email(changed["old_email"]))
+    background.add_task(_send_email_changed_mail, http, settings, changed["old_email"], changed["new_email"])
     return OkResponse()

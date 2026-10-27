@@ -7,6 +7,7 @@ sekundet. Læs mere: https://en.wikipedia.org/wiki/Argon2
 
 import asyncio
 import hashlib
+import re
 import secrets
 from datetime import timedelta
 
@@ -21,6 +22,13 @@ SESSION_LIFETIME = timedelta(days=7)
 RESET_TOKEN_LIFETIME = timedelta(hours=1)
 # Invitationen til en ny kunde virker længere, for kunden åbner ikke nødvendigvis mailen med det samme.
 INVITE_LIFETIME = timedelta(days=7)
+# Linket der bekræfter en ny e-mail. Et døgn, for kunden har ikke nødvendigvis den nye indbakke åben.
+EMAIL_CHANGE_LIFETIME = timedelta(hours=24)
+
+MAX_EMAIL_LENGTH = 254  # den længste e-mailadresse standarden tillader
+# Noget@noget.noget uden mellemrum. Bevidst løs: den eneste rigtige prøve er, at linket i mailen
+# bliver åbnet.
+_EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 MIN_PASSWORD_LENGTH = 10
 MAX_PASSWORD_LENGTH = 128  # loft, så ingen kan sende en gigantisk "adgangskode" for at spilde CPU
@@ -40,6 +48,13 @@ _DUMMY_HASH = _hasher.hash("en-adgangskode-som-ingen-har")
 def normalize_email(email: str) -> str:
     """Gør en e-mail ens: fjerner mellemrum og laver små bogstaver."""
     return email.strip().lower()
+
+
+def validate_email(email: str) -> str | None:
+    """Tjekker at en (allerede normaliseret) e-mail ligner en adresse. Returnerer en fejltekst eller None."""
+    if len(email) > MAX_EMAIL_LENGTH or not _EMAIL_PATTERN.fullmatch(email):
+        return "Skriv en gyldig e-mailadresse."
+    return None
 
 
 def validate_new_password(password: str) -> str | None:
@@ -68,6 +83,11 @@ def new_session_token() -> str:
 
 def new_reset_token() -> str:
     """Laver en tilfældig nøgle til et nulstillingslink. Den står kun i mailen."""
+    return secrets.token_urlsafe(32)
+
+
+def new_email_token() -> str:
+    """Laver en tilfældig nøgle til et link der bekræfter en ny e-mail. Den står kun i mailen."""
     return secrets.token_urlsafe(32)
 
 
