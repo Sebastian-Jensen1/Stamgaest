@@ -266,3 +266,30 @@ def test_another_cafes_sent_replies_never_end_up_in_your_prompt(client, two_cafe
     system = str(claude.calls[0]["system"])
     assert "B's private svar" not in system and "B's fakta" not in system and "B's eksempel" not in system
     assert "Café A" in system
+
+
+def test_changing_email_only_ever_touches_your_own_account(client, two_cafes):
+    """Kontoen afgøres af login og af nøglen i linket, aldrig af noget browseren kan vælge."""
+    import json
+    import re
+
+    from tests.test_password_reset_db import use_resend
+
+    a, b, _, _ = two_cafes
+    mails = use_resend(client)
+    as_user(client, a)
+    # Et forsøg på at pege på B's konto ignoreres: der er intet felt til det.
+    response = client.post(
+        "/api/auth/email",
+        json={"newEmail": "ny-a@test.dk", "currentPassword": a["password"], "userId": str(b["user_id"])},
+    )
+    assert response.status_code == 200
+    token = re.search(r"#skiftmail=(\S+)", json.loads(mails[0].content)["text"]).group(1)
+
+    # B åbner A's link: det er A's e-mail der skiftes, ikke den der er logget ind.
+    as_user(client, b)
+    assert client.post("/api/auth/confirm-email", json={"token": token}).status_code == 200
+    rows = dict(db_rows(client, "SELECT id, email FROM users"))
+    assert rows[a["user_id"]] == "ny-a@test.dk"
+    assert rows[b["user_id"]] == "b@test.dk"
+    assert client.get("/api/auth/me").json()["email"] == "b@test.dk"

@@ -33,11 +33,10 @@
   - Kunden skal kunne slå den fra og vælge grænsen (fx kun 1 stjerne).
   - Begrænsning: Places API giver kun 5 anmeldelser pr. sted, valgt efter "relevans", ikke de nyeste.
     En ny dårlig anmeldelse kan derfor mangle. Løses først rigtigt med #7.
-- [ ] **#5 Skift mail når man er logget ind, og bekræftelsesmail ved ændringer.**
-  - Skift adgangskode findes allerede (`POST /api/auth/password` og "Skift adgangskode" i dashboardet).
-  - Mail ved ændret adgangskode er lavet.
-  - Mangler: skift af mail. Den nye adresse bekræftes via et link, før den gælder, og den gamle
-    adresse får besked, så den rigtige ejer opdager en overtagelse.
+- [x] **#5 Skift mail når man er logget ind, og bekræftelsesmail ved ændringer.**
+  - Skift adgangskode og mail ved ændret adgangskode er lavet.
+  - Skift af mail er lavet (`POST /api/auth/email` og `/api/auth/confirm-email`, se README "Skift e-mail").
+    Den nye adresse bekræftes via et link, før den gælder, og den gamle adresse får besked.
 
 ## Produktforbedringer
 

@@ -77,6 +77,24 @@ fra "Glemt adgangskode"), får kontoens e-mail en besked med tidspunktet. Var de
 kan de tage kontoen tilbage med "Glemt adgangskode", som logger alle andre ud. Mailen har bevidst
 intet link der giver adgang, og den sendes ikke, når en ny kunde vælger sin første adgangskode.
 
+### Skift e-mail
+
+Kunden kan selv skifte e-mail under "Skift e-mail" i dashboardet. Det kræver den nuværende
+adgangskode. Den nye adresse får et link, der virker i 24 timer og kun én gang. Først når linket er
+åbnet, skiftes e-mailen. Indtil da logger kunden ind med den gamle.
+
+- **Den gamle adresse får besked**, når skiftet er sket. Var det ikke kunden selv, kan de ikke bruge
+  "Glemt adgangskode" (den gamle adresse virker ikke længere), så mailen beder dem skrive til
+  kontakt@stamgaest.com.
+- **Samme svar uanset om den nye adresse er ledig**, så man ikke kan gætte hvem der er kunde. Er den
+  optaget, får den nye adresse en besked om det i stedet for et link.
+- **Nøglen står efter `#` i linket** (`/#skiftmail=...`), og databasen gemmer kun et fingeraftryk
+  (tabellen `email_changes`). Linket virker også, selvom man ikke er logget ind.
+- **Højst 3 bekræftelsesmails pr. bruger i timen.** Forkerte adgangskoder tæller med i samme grænse
+  som ved login.
+- Et nyt ønske gør det forrige link ubrugeligt. Skiftes eller nulstilles adgangskoden, annulleres et
+  ventende skift, og når e-mailen er skiftet, holder gamle "glemt adgangskode"-links op med at virke.
+
 Mails sendes via [Resend](https://resend.com) og kræver tre ting i `.env`:
 
 | Nøgle | Hvad |
@@ -308,7 +326,7 @@ Der er to slags tests. Ingen af dem koster penge eller rører jeres rigtige data
   `tests/test_hosting.py` tester `HOST`, `TRUSTED_PROXIES`, health check og at en falsk IP ignoreres.
 - **Med database** (`tests/test_*_db.py`): kundens hele flow (`test_api_db`), login og
   sessioner (`test_auth_db`), **at en kunde aldrig kan se eller ændre en anden kundes data**
-  (`test_isolation_db`), admin-værktøjet (`test_admin_db`), glemt adgangskode og invitation,
+  (`test_isolation_db`), admin-værktøjet (`test_admin_db`), glemt adgangskode, invitation og skift af e-mail (`test_email_change_db`),
   lofterne for betalte kald (`test_usage_db`) og indstillinger for svar (`test_reply_settings_db`). De kører i et midlertidigt
   schema med tilfældigt navn i Neon, som oprettes før og slettes efter. Google og Claude er
   falske. Mangler `DATABASE_URL`, springes de over.
@@ -479,7 +497,7 @@ review-assistant/
     │   ├── db/
     │   │   ├── pool.py          # Forbindelsen til databasen
     │   │   ├── migrate.py       # Migrations-runner
-    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug), 006_reply_profiles.sql (indstillinger for svar)
+    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug), 006_reply_profiles.sql (indstillinger for svar), 009_email_changes.sql (skift e-mail)
     │   └── core/                # Indstillinger, fejl, sikkerhed, grænser og "hvem er logget ind"
     ├── evals/                   # Testsæt: sammenlign udkast side om side (uv run python -m evals.compare)
     └── tests/                   # uv run pytest
@@ -490,7 +508,7 @@ indeholder både API-nøgler og adgangskoden til databasen.
 
 ## API-endpoints
 
-Alle endpoints undtagen health, login, logout og glemt adgangskode kræver, at man er logget ind. Hvilken café det gælder,
+Alle endpoints undtagen health, login, logout, glemt adgangskode og bekræft e-mail kræver, at man er logget ind. Hvilken café det gælder,
 ved serveren ud fra login, og den kan aldrig angives i kaldet.
 
 | Metode | Sti | Hvad den gør |
@@ -502,6 +520,8 @@ ved serveren ud fra login, og den kan aldrig angives i kaldet.
 | `POST` | `/api/auth/password` | Skifter adgangskode og logger andre enheder ud. |
 | `POST` | `/api/auth/forgot-password` | Sender et link til at vælge ny adgangskode, hvis e-mailen findes. Svarer altid ens. |
 | `POST` | `/api/auth/reset-password` | Vælger ny adgangskode med nøglen fra mailen og logger ud alle steder. |
+| `POST` | `/api/auth/email` | Beder om at skifte e-mail (kræver adgangskoden). Sender et link til den nye adresse. Svarer altid ens. |
+| `POST` | `/api/auth/confirm-email` | Skifter e-mail med nøglen fra mailen og giver den gamle adresse besked. Kræver ikke login. |
 | `GET` | `/api/reviews` | Din cafés oplysninger og alle dens gemte anmeldelser (henter intet fra Google). Hver anmeldelse har `newSinceLastVisit`. |
 | `POST` | `/api/reviews/refresh` | Henter fra Google for **din** café, gemmer, og svarer med det der nu står i databasen. Højst en gang i minuttet. |
 | `POST` | `/api/generate` | Genererer udkast med Claude for de valgte anmeldelser og gemmer dem i `replies`. |

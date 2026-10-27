@@ -44,6 +44,19 @@ class ResetPasswordRequest(PasswordModel):
     new_password: str = Field(min_length=1, max_length=256)
 
 
+class ChangeEmailRequest(PasswordModel):
+    """Det browseren sender for at skifte e-mail. Den nye adresse tjekkes og gøres ens i koden."""
+
+    new_email: str = Field(min_length=3, max_length=254)
+    current_password: str = Field(min_length=1, max_length=128)
+
+
+class ConfirmEmailRequest(CamelModel):
+    """Det browseren sender for at bekræfte en ny e-mail med nøglen fra mailen."""
+
+    token: str = Field(min_length=1, max_length=200)
+
+
 class MeResponse(CamelModel):
     """Hvem er logget ind, og hvilken café de hører til."""
 
