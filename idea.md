@@ -89,7 +89,10 @@
     og skift til betaling senere.
 - [ ] **#13 Fejlovervågning** (Sentry) og uptime-check, nu hvor kunder er afhængige af det.
 - [x] **#14 Forbrugsloft og audit-log** på Claude-kald, så ingen kan løbe API-regningen op.
-- [ ] **#15 2FA** eller "log ind via mail-link" (magic link) som alternativ til adgangskoder.
+- [x] **#15 2FA** eller "log ind via mail-link" (magic link) som alternativ til adgangskoder.
+  - Lavet: login via mail-link (se README "Login med et link"). 2FA er fravalgt indtil videre: det giver
+    kun reel beskyttelse, hvis også "glemt adgangskode" og login-linket kræver koden, og det er mere bøvl
+    for kunderne.
 
 ## Hosting
 

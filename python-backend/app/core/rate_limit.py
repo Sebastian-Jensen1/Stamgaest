@@ -90,6 +90,10 @@ class Limits:
     # ingen kan bruge os til at fylde en andens indbakke.
     forgot_email: RateLimiter = field(default_factory=lambda: RateLimiter(3, 60 * 60))
     forgot_ip: RateLimiter = field(default_factory=lambda: RateLimiter(10, 60 * 60))
+    # Login-link på mail: samme grænser som "glemt adgangskode", men for sig, så det ene ikke
+    # bruger af det andet.
+    login_link_email: RateLimiter = field(default_factory=lambda: RateLimiter(3, 60 * 60))
+    login_link_ip: RateLimiter = field(default_factory=lambda: RateLimiter(10, 60 * 60))
     # Forkerte forsøg på at bruge et nulstillingslink: højst 20 pr. IP-adresse på 15 minutter.
     reset_ip: RateLimiter = field(default_factory=lambda: RateLimiter(20, 15 * 60))
     # Skift af e-mail: højst 3 bekræftelsesmails pr. bruger i timen, så ingen kan bruge os til at
@@ -105,6 +109,8 @@ class Limits:
             self.login_ip,
             self.forgot_email,
             self.forgot_ip,
+            self.login_link_email,
+            self.login_link_ip,
             self.reset_ip,
             self.change_email,
             self.generate,

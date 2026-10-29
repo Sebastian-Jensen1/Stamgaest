@@ -329,7 +329,36 @@
       </div>
       <div id="loginError" class="error" role="alert"></div>
       <button class="btn-primary" id="loginBtn" type="submit">Log ind</button>
-      <p class="sub" style="margin:14px 0 0;"><button class="linkbtn" id="forgotLink" type="button">Glemt adgangskode?</button></p>
+      <p class="sub" style="margin:14px 0 0;">
+        <button class="linkbtn" id="loginLinkBtn" type="button">Send mig et login-link</button>
+        <button class="linkbtn" id="forgotLink" type="button">Glemt adgangskode?</button>
+      </p>
+    </form>
+  </div>
+
+  <!-- Vises når man vil logge ind med et link på mail i stedet for adgangskoden -->
+  <div id="linkView" hidden>
+    <form class="login-card" id="linkForm">
+      <h1>Log ind med et link</h1>
+      <p class="sub">Skriv din e-mail, så sender vi et link, der logger dig ind. Så slipper du for adgangskoden.</p>
+      <div class="field-block">
+        <label for="linkEmail">E-mail</label>
+        <input id="linkEmail" type="email" name="email" autocomplete="username" required />
+      </div>
+      <div id="linkMessage" class="error" role="alert"></div>
+      <button class="btn-primary" id="linkSendBtn" type="submit">Send login-link</button>
+      <p class="sub" style="margin:14px 0 0;"><button class="linkbtn" id="linkBack" type="button">Tilbage til log ind</button></p>
+    </form>
+  </div>
+
+  <!-- Vises når man har klikket på login-linket i mailen -->
+  <div id="linkLoginView" hidden>
+    <form class="login-card" id="linkLoginForm">
+      <h1>Log ind på Stamgæst</h1>
+      <p class="sub">Tryk på knappen for at logge ind.</p>
+      <div id="linkLoginMessage" class="error" role="alert"></div>
+      <button class="btn-primary" id="linkLoginBtn" type="submit">Log ind</button>
+      <p class="sub" style="margin:14px 0 0;"><button class="linkbtn" id="linkLoginBack" type="button">Tilbage til log ind</button></p>
     </form>
   </div>
 
@@ -667,6 +696,7 @@
     reviewList.innerHTML = "";
     errorDiv.textContent = "";
     $("appView").hidden = true;
+    hideLinkViews();
     $("forgotView").hidden = true;
     $("resetView").hidden = true;
     clearSettings();
@@ -681,6 +711,7 @@
 
   function showApp(me) {
     $("loginView").hidden = true;
+    hideLinkViews();
     $("forgotView").hidden = true;
     $("resetView").hidden = true;
     $("settingsView").hidden = true;
@@ -700,6 +731,7 @@
     history.replaceState(null, "", location.pathname + location.search);
     $("appView").hidden = true;
     $("loginView").hidden = true;
+    hideLinkViews();
     $("forgotView").hidden = true;
     $("resetView").hidden = false;
     $("resetMessage").textContent = "";
@@ -707,11 +739,39 @@
     $("resetRepeat").value = "";
   }
 
+  // ---- Login med et link på mail ----
+  // Nøglen står efter # (#login=...), ligesom ved "glemt adgangskode". Den bruges først, når
+  // kunden trykker "Log ind". Nogle mailprogrammer åbner links i en rigtig browser for at tjekke
+  // dem for virus, og de må hverken bruge linket op eller selv blive logget ind.
+  let loginLinkToken = null;
+
+  function hideLinkViews() {
+    $("linkView").hidden = true;
+    $("linkLoginView").hidden = true;
+  }
+
+  function showLinkLogin(token) {
+    loginLinkToken = token;
+    history.replaceState(null, "", location.pathname + location.search);
+    $("appView").hidden = true;
+    $("loginView").hidden = true;
+    $("forgotView").hidden = true;
+    $("resetView").hidden = true;
+    $("linkView").hidden = true;
+    $("linkLoginView").hidden = false;
+    $("linkLoginMessage").textContent = "";
+  }
+
   // Tjekker om man allerede er logget ind (cookien findes), og viser i så fald anmeldelserne.
   async function boot() {
     const fromMail = location.hash.match(/^#nulstil=([A-Za-z0-9_-]+)$/);
     if (fromMail) {
       showReset(fromMail[1]);
+      return;
+    }
+    const loginLink = location.hash.match(/^#login=([A-Za-z0-9_-]+)$/);
+    if (loginLink) {
+      showLinkLogin(loginLink[1]);
       return;
     }
     const newEmail = location.hash.match(/^#skiftmail=([A-Za-z0-9_-]+)$/);
@@ -754,6 +814,55 @@
     $("forgotMessage").className = "error";
     $("forgotMessage").textContent = "";
     $("forgotEmail").value = $("loginEmail").value.trim();
+  });
+
+  $("loginLinkBtn").addEventListener("click", () => {
+    $("loginView").hidden = true;
+    $("linkView").hidden = false;
+    $("linkMessage").className = "error";
+    $("linkMessage").textContent = "";
+    $("linkEmail").value = $("loginEmail").value.trim();
+  });
+
+  $("linkBack").addEventListener("click", () => showLogin());
+  $("linkLoginBack").addEventListener("click", () => {
+    loginLinkToken = null;
+    showLogin();
+  });
+
+  $("linkForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("linkSendBtn");
+    const msg = $("linkMessage");
+    btn.disabled = true;
+    msg.className = "error";
+    msg.textContent = "";
+    try {
+      await api("POST", "/api/auth/login-link", { email: $("linkEmail").value.trim() });
+      // Samme tekst uanset om e-mailen findes, ligesom serveren.
+      msg.className = "ok";
+      msg.textContent = "Hvis e-mailen er oprettet, er der sendt et link. Det virker i 15 minutter. Tjek din indbakke (og spam).";
+    } catch (err) {
+      msg.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("linkLoginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const btn = $("linkLoginBtn");
+    btn.disabled = true;
+    $("linkLoginMessage").textContent = "";
+    try {
+      await api("POST", "/api/auth/login-link/use", { token: loginLinkToken });
+      loginLinkToken = null;
+      await boot();
+    } catch (err) {
+      $("linkLoginMessage").textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   $("forgotBack").addEventListener("click", () => showLogin());

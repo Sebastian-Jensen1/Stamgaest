@@ -46,8 +46,8 @@ computere. Det er med vilje, se "Sikkerhed" nedenfor.
 Hver kunde (fx en café) har et login, som er koblet til **præcis én café**. Kunden ser og
 ændrer kun sin egen cafés anmeldelser. Sådan hænger det sammen:
 
-- **Login med e-mail og adgangskode.** Adgangskoder gemmes aldrig som tekst, kun som en
-  argon2-hash. Efter login får browseren en tilfældig nøgle i en cookie (7 dage), og
+- **Login med e-mail og adgangskode, eller med et link på mail** (se "Login med et link").
+  Adgangskoder gemmes aldrig som tekst, kun som en argon2-hash. Efter login får browseren en tilfældig nøgle i en cookie (7 dage), og
   databasen gemmer kun et fingeraftryk af den.
 - **Serveren afgør, hvilken café det gælder, ud fra login.** Browseren nævner aldrig en
   café. Sender den alligevel et café-id eller sted-id med, ignoreres det. Et
@@ -56,6 +56,24 @@ Hver kunde (fx en café) har et login, som er koblet til **præcis én café**. 
   oprettes. "Hent seneste anmeldelser" henter altid for det sted (højst en gang i minuttet).
 - **Vi opretter kunderne selv.** Der er ingen tilmelding på siden og ingen admin-side på
   nettet, kun et kommandolinjeværktøj.
+
+### Login med et link
+
+"Send mig et login-link" på loginsiden er et alternativ til adgangskoden. Kunden skriver sin e-mail
+og får et link, der virker i 15 minutter og kun én gang. Linket åbner en side med en "Log ind"-knap.
+
+- **Ingen ny risiko:** "Glemt adgangskode" stoler allerede på kundens indbakke, så et login-link giver
+  ikke mere adgang end det, der fandtes i forvejen. Adgangskoden virker stadig som før.
+- **Kunden skal selv trykke "Log ind".** Nogle mailprogrammer åbner links i en rigtig browser for at
+  tjekke dem for virus. Brugte siden linket automatisk, kunne scanneren bruge det op eller selv blive
+  logget ind.
+- **Samme svar uanset om e-mailen findes**, og mailen sendes efter svaret. Højst 3 links pr. e-mail og
+  10 pr. IP-adresse i timen, for sig fra grænserne for "glemt adgangskode".
+- **Nøglen står efter `#` i linket** (`/#login=...`), og databasen gemmer kun et fingeraftryk
+  (tabellen `login_tokens`). Et nyt link gør det forrige ubrugeligt.
+- Slåede-fra og inviterede kunder (som ikke har valgt adgangskode endnu) får intet link. Ventende links
+  annulleres, når adgangskoden nulstilles, e-mailen skiftes, eller kunden slås fra.
+- Et login via link ophæver en spærring efter for mange forkerte adgangskoder, ligesom "glemt adgangskode".
 
 ### Glemt adgangskode (mail)
 
@@ -378,7 +396,7 @@ Der er to slags tests. Ingen af dem koster penge eller rører jeres rigtige data
   `tests/test_hosting.py` tester `HOST`, `TRUSTED_PROXIES`, health check og at en falsk IP ignoreres.
 - **Med database** (`tests/test_*_db.py`): kundens hele flow (`test_api_db`), login og
   sessioner (`test_auth_db`), **at en kunde aldrig kan se eller ændre en anden kundes data**
-  (`test_isolation_db`), admin-værktøjet (`test_admin_db`), glemt adgangskode, invitation og skift af e-mail (`test_email_change_db`),
+  (`test_isolation_db`), admin-værktøjet (`test_admin_db`), glemt adgangskode, invitation og skift af e-mail (`test_email_change_db`), login med link (`test_login_link_db`),
   lofterne for betalte kald (`test_usage_db`), indstillinger for svar (`test_reply_settings_db`) og
   statistik og emner (`test_stats_db`). De kører i et midlertidigt
   schema med tilfældigt navn i Neon, som oprettes før og slettes efter. Google og Claude er
@@ -548,11 +566,11 @@ review-assistant/
     │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate, reply_settings, stats, health
     │   ├── schemas/             # Tjekker og former data ind og ud
     │   ├── services/            # Claude (udkast, profil fra hjemmeside og emner), statistik, Google Places, mail, lofter og login
-    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens, email_changes, usage, reply_settings, review_topics)
+    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens, login_tokens, email_changes, usage, reply_settings, review_topics)
     │   ├── db/
     │   │   ├── pool.py          # Forbindelsen til databasen
     │   │   ├── migrate.py       # Migrations-runner
-    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug), 006_reply_profiles.sql (indstillinger for svar), 007_reply_profile_v2.sql (ny indstillingsside), 008_reviews_seen.sql ("Nye siden sidst"), 009_email_changes.sql (skift e-mail), 010_review_topics.sql (emner til statistikken)
+    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug), 006_reply_profiles.sql (indstillinger for svar), 007_reply_profile_v2.sql (ny indstillingsside), 008_reviews_seen.sql ("Nye siden sidst"), 009_email_changes.sql (skift e-mail), 010_review_topics.sql (emner til statistikken), 011_login_tokens.sql (login med link)
     │   └── core/                # Indstillinger, fejl, sikkerhed, grænser og "hvem er logget ind"
     ├── evals/                   # Testsæt: sammenlign udkast side om side (uv run python -m evals.compare)
     └── tests/                   # uv run pytest
@@ -563,7 +581,7 @@ indeholder både API-nøgler og adgangskoden til databasen.
 
 ## API-endpoints
 
-Alle endpoints undtagen health, login, logout, glemt adgangskode og bekræft e-mail kræver, at man er logget ind. Hvilken café det gælder,
+Alle endpoints undtagen health, login (også med link), logout, glemt adgangskode og bekræft e-mail kræver, at man er logget ind. Hvilken café det gælder,
 ved serveren ud fra login, og den kan aldrig angives i kaldet.
 
 | Metode | Sti | Hvad den gør |
@@ -573,6 +591,8 @@ ved serveren ud fra login, og den kan aldrig angives i kaldet.
 | `POST` | `/api/auth/logout` | Sletter sessionen. |
 | `GET` | `/api/auth/me` | Hvem er logget ind, og hvilken café. Siden bruger den ved opstart. |
 | `POST` | `/api/auth/password` | Skifter adgangskode og logger andre enheder ud. |
+| `POST` | `/api/auth/login-link` | Sender et link, der logger ind, hvis e-mailen findes. Svarer altid ens. |
+| `POST` | `/api/auth/login-link/use` | Logger ind med nøglen fra mailen og sætter cookien. |
 | `POST` | `/api/auth/forgot-password` | Sender et link til at vælge ny adgangskode, hvis e-mailen findes. Svarer altid ens. |
 | `POST` | `/api/auth/reset-password` | Vælger ny adgangskode med nøglen fra mailen og logger ud alle steder. |
 | `POST` | `/api/auth/email` | Beder om at skifte e-mail (kræver adgangskoden). Sender et link til den nye adresse. Svarer altid ens. |
