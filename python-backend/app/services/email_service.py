@@ -65,6 +65,25 @@ async def send_password_reset(http: httpx.AsyncClient, settings: Settings, *, to
     return await send_email(http, settings, to=to, subject="Vælg ny adgangskode til Stamgæst", text=text)
 
 
+async def send_login_link(http: httpx.AsyncClient, settings: Settings, *, to: str, token: str, minutes: int) -> bool:
+    """Sender mailen med et link, der logger kunden direkte ind.
+
+    Nøglen står efter # i linket, ligesom ved "glemt adgangskode", så den aldrig sendes til en
+    server eller står i en log. Siden bruger først nøglen, når kunden trykker "Log ind" (se
+    routers/auth.py, use_login_link).
+    """
+    link = f"{settings.app_base_url}/#login={token}"
+    text = (
+        "Hej\n\n"
+        "Her er dit link til at logge ind på Stamgæst.\n\n"
+        f"Det virker i {minutes} minutter og kun én gang:\n"
+        f"{link}\n\n"
+        "Har du ikke bedt om det, kan du bare slette denne mail. Ingen kan logge ind uden linket.\n\n"
+        "Venlig hilsen\nStamgæst"
+    )
+    return await send_email(http, settings, to=to, subject="Log ind på Stamgæst", text=text)
+
+
 async def send_invitation(
     http: httpx.AsyncClient, settings: Settings, *, to: str, token: str, business_name: str, days: int
 ) -> bool:

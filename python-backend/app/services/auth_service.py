@@ -24,6 +24,8 @@ RESET_TOKEN_LIFETIME = timedelta(hours=1)
 INVITE_LIFETIME = timedelta(days=7)
 # Linket der bekræfter en ny e-mail. Et døgn, for kunden har ikke nødvendigvis den nye indbakke åben.
 EMAIL_CHANGE_LIFETIME = timedelta(hours=24)
+# Et login-link logger direkte ind, så det virker kun kort. Kunden bruger det typisk med det samme.
+LOGIN_LINK_LIFETIME = timedelta(minutes=15)
 
 MAX_EMAIL_LENGTH = 254  # den længste e-mailadresse standarden tillader
 # Noget@noget.noget uden mellemrum. Bevidst løs: den eneste rigtige prøve er, at linket i mailen
@@ -88,6 +90,11 @@ def new_reset_token() -> str:
 
 def new_email_token() -> str:
     """Laver en tilfældig nøgle til et link der bekræfter en ny e-mail. Den står kun i mailen."""
+    return secrets.token_urlsafe(32)
+
+
+def new_login_token() -> str:
+    """Laver en tilfældig nøgle til et login-link. Den står kun i mailen."""
     return secrets.token_urlsafe(32)
 
 

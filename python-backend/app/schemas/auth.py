@@ -37,6 +37,18 @@ class ForgotPasswordRequest(CamelModel):
     email: str = Field(min_length=3, max_length=254)
 
 
+class LoginLinkRequest(CamelModel):
+    """Det browseren sender for at få et login-link på mail."""
+
+    email: str = Field(min_length=3, max_length=254)
+
+
+class UseLoginLinkRequest(CamelModel):
+    """Det browseren sender for at logge ind med nøglen fra mailen."""
+
+    token: str = Field(min_length=1, max_length=200)
+
+
 class ResetPasswordRequest(PasswordModel):
     """Det browseren sender for at vælge ny adgangskode med nøglen fra mailen."""
 

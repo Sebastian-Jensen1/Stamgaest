@@ -32,7 +32,7 @@ from email_validator import EmailNotValidError, validate_email
 
 from app.core.config import Settings, load_settings
 from app.db import pool
-from app.models import password_tokens, replies, restaurants, review_topics, reviews, sessions, usage, users
+from app.models import login_tokens, password_tokens, replies, restaurants, review_topics, reviews, sessions, usage, users
 from app.services import auth_service, edit_metrics, email_service, places_service, topics_service
 
 # Prisen for emne-modellen (claude-haiku-5-5) i USD pr. million tokens, oktober 2026. Bruges kun til
@@ -186,6 +186,7 @@ async def reset_password(email: str) -> str:
     await users.update_password(user["id"], await auth_service.hash_password(password))
     await users.set_invite_pending(user["id"], False)  # kunden har nu en adgangskode
     await password_tokens.delete_for_user(user["id"])  # et gammelt link må ikke overskrive den
+    await login_tokens.delete_for_user(user["id"])
     await sessions.delete_for_user(user["id"])
     return password
 
@@ -198,6 +199,7 @@ async def set_active(email: str, active: bool) -> None:
     await users.set_active(user["id"], active)
     if not active:
         await sessions.delete_for_user(user["id"])
+        await login_tokens.delete_for_user(user["id"])
 
 
 async def edit_report(*, restaurant_id: UUID | None = None, days: int | None = None) -> dict:

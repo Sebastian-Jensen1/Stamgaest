@@ -1,4 +1,5 @@
-"""Endpoints til login: log ind, log ud, hvem er jeg, skift adgangskode, glemt adgangskode og skift e-mail."""
+"""Endpoints til login: log ind (med adgangskode eller link på mail), log ud, hvem er jeg, skift adgangskode,
+glemt adgangskode og skift e-mail."""
 
 from datetime import datetime, timezone
 
@@ -12,15 +13,17 @@ from app.core.config import Settings
 from app.core.deps import CurrentUser, get_http, get_limits, get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import Limits, describe_wait
-from app.models import email_changes, password_tokens, restaurants, sessions, users
+from app.models import email_changes, login_tokens, password_tokens, restaurants, sessions, users
 from app.schemas.auth import (
     ChangeEmailRequest,
     ChangePasswordRequest,
     ConfirmEmailRequest,
     ForgotPasswordRequest,
+    LoginLinkRequest,
     LoginRequest,
     MeResponse,
     ResetPasswordRequest,
+    UseLoginLinkRequest,
 )
 from app.schemas.reviews import OkResponse
 from app.services import auth_service, email_service
@@ -79,7 +82,12 @@ async def login(
         # Samme besked uanset om e-mailen findes, så man ikke kan gætte hvem der er kunde.
         raise ApiError(401, "Forkert e-mail eller adgangskode.")
     limits.login_email.reset(email)
+    await _start_session(request, response, settings, user["id"])
+    return await _me({"email": user["email"], "restaurant_id": user["restaurant_id"]})
 
+
+async def _start_session(request: Request, response: Response, settings: Settings, user_id) -> None:
+    """Logger brugeren ind: opretter en ny session og sætter cookien. Bruges af begge måder at logge ind på."""
     # Hver login får en helt ny nøgle. En gammel nøgle (fx fra en anden bruger på samme
     # computer) bliver slettet, så den ikke kan genbruges.
     old_token = request.cookies.get(SESSION_COOKIE)
@@ -90,10 +98,10 @@ async def login(
     token = auth_service.new_session_token()
     await sessions.create(
         token_hash=auth_service.hash_token(token),
-        user_id=user["id"],
+        user_id=user_id,
         expires_at=datetime.now(timezone.utc) + SESSION_LIFETIME,
     )
-    await users.touch_login(user["id"])
+    await users.touch_login(user_id)
 
     response.set_cookie(
         SESSION_COOKIE,
@@ -104,7 +112,96 @@ async def login(
         secure=settings.cookie_secure,
         path="/",
     )
-    return await _me({"email": user["email"], "restaurant_id": user["restaurant_id"]})
+
+
+async def _send_login_link(http: httpx.AsyncClient, settings: Settings, user: dict) -> None:
+    """Laver et login-link til brugeren og sender det på mail.
+
+    Køres EFTER svaret er sendt til browseren. Så tager svaret lige lang tid, uanset om e-mailen
+    findes, og man kan ikke gætte hvem der er kunde.
+    """
+    try:
+        token = auth_service.new_login_token()
+        await login_tokens.delete_expired()
+        await login_tokens.create(
+            token_hash=auth_service.hash_token(token),
+            user_id=user["id"],
+            expires_at=datetime.now(timezone.utc) + auth_service.LOGIN_LINK_LIFETIME,
+        )
+        await email_service.send_login_link(
+            http,
+            settings,
+            to=user["email"],
+            token=token,
+            minutes=int(auth_service.LOGIN_LINK_LIFETIME.total_seconds() // 60),
+        )
+    except Exception:  # noqa: BLE001 - en baggrundsopgave har ingen at svare til, så fejlen logges
+        logger.exception("Kunne ikke sende login-link")
+
+
+@router.post("/auth/login-link", response_model=OkResponse)
+async def request_login_link(
+    body: LoginLinkRequest,
+    request: Request,
+    background: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+    limits: Limits = Depends(get_limits),
+    http: httpx.AsyncClient = Depends(get_http),
+):
+    """POST /api/auth/login-link  Sender et link, der logger ind, hvis e-mailen findes.
+
+    Et alternativ til adgangskoden. Det giver ikke mere adgang end "glemt adgangskode", som også
+    stoler på kundens indbakke. Svarer ALTID ens, uanset om e-mailen findes.
+    """
+    email = auth_service.normalize_email(body.email)
+    ip = _client_ip(request)
+
+    # Tæller alle forsøg, også på e-mails der ikke findes, så grænsen ikke afslører hvem der er
+    # kunde, og så ingen kan bruge os til at fylde en andens indbakke.
+    waits = [w for w in (limits.login_link_email.check(email), limits.login_link_ip.check(ip)) if w]
+    if waits:
+        raise _too_many_attempts(max(waits))
+    limits.login_link_email.record(email)
+    limits.login_link_ip.record(ip)
+
+    user = await users.find_by_email(email)
+    # En inviteret kunde, der ikke har valgt adgangskode endnu, får intet (samme grund som ved
+    # "glemt adgangskode": kun vi kan sende en invitation).
+    if user is not None and user["is_active"] and not user["invite_pending"]:
+        background.add_task(_send_login_link, http, settings, user)
+    return OkResponse()
+
+
+@router.post("/auth/login-link/use", response_model=MeResponse)
+async def use_login_link(
+    body: UseLoginLinkRequest,
+    request: Request,
+    response: Response,
+    settings: Settings = Depends(get_settings),
+    limits: Limits = Depends(get_limits),
+):
+    """POST /api/auth/login-link/use  Logger ind med nøglen fra mailen. Sætter cookien som ved login.
+
+    Siden kalder den først, når kunden trykker "Log ind", ikke bare fordi linket er åbnet. Nogle
+    mailprogrammer åbner links i en rigtig browser for at tjekke dem for virus. Ellers kunne de
+    bruge linket op eller selv blive logget ind.
+    """
+    ip = _client_ip(request)
+    wait = limits.reset_ip.check(ip)
+    if wait:
+        raise _too_many_attempts(wait)
+
+    user = await login_tokens.use(auth_service.hash_token(body.token))
+    if user is None:
+        limits.reset_ip.record(ip)
+        # Samme besked uanset om linket er ukendt, udløbet eller brugt.
+        raise ApiError(400, "Linket virker ikke længere. Bed om et nyt.")
+
+    # Linket beviser at kunden har adgang til sin indbakke, så en spærring efter forkerte
+    # adgangskoder ophæves, ligesom ved "glemt adgangskode".
+    limits.login_email.reset(auth_service.normalize_email(user["email"]))
+    await _start_session(request, response, settings, user["user_id"])
+    return await _me(user)
 
 
 @router.post("/auth/logout", response_model=OkResponse)
@@ -261,6 +358,7 @@ async def reset_password(
     await users.set_invite_pending(user["user_id"], False)  # kunden har nu valgt en adgangskode
     await sessions.delete_for_user(user["user_id"])
     await password_tokens.delete_for_user(user["user_id"])
+    await login_tokens.delete_for_user(user["user_id"])
     # Tager kunden kontoen tilbage, må et skift af e-mail som en anden har startet, ikke kunne fuldføres.
     await email_changes.delete_for_user(user["user_id"])
     limits.login_email.reset(auth_service.normalize_email(user["email"]))
@@ -376,8 +474,10 @@ async def confirm_email(
         # Samme besked uanset om linket er ukendt, udløbet eller brugt.
         raise ApiError(400, "Linket virker ikke længere. Bed om et nyt.")
 
-    # Links til "glemt adgangskode" blev sendt til den gamle adresse, som kunden måske ikke har længere.
+    # Links til "glemt adgangskode" og login blev sendt til den gamle adresse, som kunden måske ikke
+    # har længere.
     await password_tokens.delete_for_user(changed["user_id"])
+    await login_tokens.delete_for_user(changed["user_id"])
     await email_changes.delete_for_user(changed["user_id"])
     limits.login_email.reset(auth_service.normalize_email(changed["old_email"]))
     background.add_task(_send_email_changed_mail, http, settings, changed["old_email"], changed["new_email"])
