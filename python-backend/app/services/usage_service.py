@@ -20,6 +20,7 @@ _KIND_LABEL = {
     usage.DRAFT: "udkast fra Claude",
     usage.FETCH: "hentninger fra Google",
     usage.PROFILE: "profiler bygget fra hjemmesider",
+    usage.TOPICS: "mærkning af anmeldelser med emner",
 }
 _SCOPE_LABEL = {
     "cafe_day": "pr. café pr. dag",
@@ -31,7 +32,12 @@ _SCOPE_LABEL = {
 
 def caps_for(kind: str, settings: Settings) -> Caps:
     """Giver lofterne for en slags kald."""
-    return {usage.DRAFT: settings.draft_caps, usage.FETCH: settings.fetch_caps, usage.PROFILE: settings.profile_caps}[kind]
+    return {
+        usage.DRAFT: settings.draft_caps,
+        usage.FETCH: settings.fetch_caps,
+        usage.PROFILE: settings.profile_caps,
+        usage.TOPICS: settings.topics_caps,
+    }[kind]
 
 
 def refusal_message(kind: str, scope: str, *, used: int, cap: int) -> str:
@@ -48,6 +54,9 @@ def refusal_message(kind: str, scope: str, *, used: int, cap: int) -> str:
             period = "i dag" if scope == "cafe_day" else "denne måned"
             return f"Profilen er bygget mange gange {period}. Ret i teksten selv, eller prøv igen senere."
         return "Det er midlertidigt ikke muligt at bygge en profil. Prøv igen senere."
+    if kind == usage.TOPICS:
+        # Mærkningen kører i baggrunden, så kunden ser aldrig teksten direkte. Den logges.
+        return "Emnerne bliver opdateret senere."
     if scope == "cafe_day":
         return "Anmeldelserne er hentet mange gange i dag. Prøv igen i morgen."
     if scope == "cafe_month":

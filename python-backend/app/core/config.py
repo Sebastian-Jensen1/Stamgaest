@@ -20,6 +20,9 @@ load_dotenv(BACKEND_DIR / ".env")
 
 # Modellen der skriver udkastene. Kan ændres med CLAUDE_MODEL i .env.
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
+# Modellen der mærker anmeldelser med emner til statistikken. Det er en enkel sortering, så en
+# lille, billig model er nok. Kan ændres med CLAUDE_TOPICS_MODEL i .env.
+DEFAULT_TOPICS_MODEL = "claude-haiku-5-5"
 
 @dataclass(frozen=True)
 class Caps:
@@ -41,6 +44,9 @@ DEFAULT_DRAFT_CAPS = Caps(cafe_day=100, cafe_month=1000, all_day=1000, all_month
 DEFAULT_FETCH_CAPS = Caps(cafe_day=20, cafe_month=300, all_day=200, all_month=3000)
 # "Byg profil fra hjemmesiden": Claude læser hjemmesiden (nogle kroner pr. gang). Sker sjældent.
 DEFAULT_PROFILE_CAPS = Caps(cafe_day=3, cafe_month=10, all_day=30, all_month=200)
+# Mærkning af anmeldelser med emner. Ét kald mærker op til 10 anmeldelser og koster under en øre
+# med claude-haiku-5-5 (oktober 2026). Lofterne er pr. kald, ikke pr. anmeldelse.
+DEFAULT_TOPICS_CAPS = Caps(cafe_day=30, cafe_month=200, all_day=300, all_month=3000)
 
 # Cloudflares egne IP-adresser, som de står på https://www.cloudflare.com/ips/ (oktober 2026).
 # Bruges når TRUSTED_PROXIES indeholder "cloudflare". Listen ændres sjældent, men tjek den ved
@@ -85,6 +91,9 @@ class Settings:
     draft_caps: Caps = DEFAULT_DRAFT_CAPS
     fetch_caps: Caps = DEFAULT_FETCH_CAPS
     profile_caps: Caps = DEFAULT_PROFILE_CAPS
+    topics_caps: Caps = DEFAULT_TOPICS_CAPS
+    # Modellen der mærker anmeldelser med emner (se DEFAULT_TOPICS_MODEL).
+    claude_topics_model: str = DEFAULT_TOPICS_MODEL
     # Nødbremse: True slår udkast fra Claude fra for ALLE caféer.
     ai_paused: bool = False
     # Hvem får en mail, når et loft er ved at blive nået. Mangler den, skrives det kun i loggen.
@@ -216,6 +225,8 @@ def load_settings() -> Settings:
         draft_caps=_caps("CAP_DRAFTS", DEFAULT_DRAFT_CAPS),
         fetch_caps=_caps("CAP_FETCHES", DEFAULT_FETCH_CAPS),
         profile_caps=_caps("CAP_PROFILES", DEFAULT_PROFILE_CAPS),
+        topics_caps=_caps("CAP_TOPICS", DEFAULT_TOPICS_CAPS),
+        claude_topics_model=_clean(os.getenv("CLAUDE_TOPICS_MODEL")) or DEFAULT_TOPICS_MODEL,
         ai_paused=os.getenv("AI_PAUSED") == "1",
         admin_email=_clean(os.getenv("ADMIN_EMAIL")),
         claude_price_input_per_mtok=_price("CLAUDE_PRICE_INPUT_PER_MTOK", 3.0),

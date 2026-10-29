@@ -25,14 +25,20 @@ import sys
 from datetime import datetime, timezone
 from uuid import UUID
 
+import anthropic
 import httpx
 import psycopg
 from email_validator import EmailNotValidError, validate_email
 
 from app.core.config import Settings, load_settings
 from app.db import pool
-from app.models import password_tokens, replies, restaurants, reviews, sessions, usage, users
-from app.services import auth_service, edit_metrics, email_service, places_service
+from app.models import password_tokens, replies, restaurants, review_topics, reviews, sessions, usage, users
+from app.services import auth_service, edit_metrics, email_service, places_service, topics_service
+
+# Prisen for emne-modellen (claude-haiku-5-5) i USD pr. million tokens, oktober 2026. Bruges kun til
+# det anslåede beløb i `usage`. Skiftes CLAUDE_TOPICS_MODEL, passer den ikke længere.
+TOPICS_PRICE_INPUT_PER_MTOK = 0.10
+TOPICS_PRICE_OUTPUT_PER_MTOK = 0.50
 
 
 class CliError(Exception):
@@ -325,6 +331,60 @@ async def set_ai_enabled(restaurant_id: UUID, enabled: bool) -> None:
         raise CliError("Der findes ingen café med det id. Se dem med 'list-restaurants'.")
 
 
+async def tag_topics(
+    settings: Settings, *, client: anthropic.AsyncAnthropic, http: httpx.AsyncClient, restaurant_id: UUID | None = None
+) -> list[tuple[str, int, int]]:
+    """Mærker caféernes anmeldelser med emner nu (alle caféer, eller én). Giver (navn, mærket, mangler stadig).
+
+    Bruges til at mærke de anmeldelser, caféerne havde, før statistikken fandtes, og efter en ny
+    udgave af emnelisten. Lofterne og nødbremserne gælder som altid. Kører en café's mærkning
+    allerede (fra siden), springes den over.
+    """
+    if restaurant_id is not None:
+        found = await restaurants.find_by_id(restaurant_id)
+        if found is None:
+            raise CliError("Der findes ingen café med det id. Se dem med 'list-restaurants'.")
+        targets = [found]
+    else:
+        targets = [await restaurants.find_by_id(r["id"]) for r in await restaurants.list_all()]
+
+    report = []
+    version = topics_service.TAXONOMY_VERSION
+    for restaurant in targets:
+        saved = 0
+        if topics_service.ai_allowed(settings, restaurant):
+            # Én kørsel tager højst topics_service.MAX_CALLS_PER_RUN kald. Fortsæt så længe der
+            # sker fremskridt (stopper ved et loft eller en fejl).
+            while await review_topics.count_pending(restaurant["id"], version):
+                if not await restaurants.claim_topics(restaurant["id"], topics_service.STALE_MINUTES):
+                    break
+                done = await topics_service.run_topics_job(
+                    client, settings=settings, http=http, restaurant=restaurant, user_id=None
+                )
+                saved += done
+                if done == 0:
+                    break
+        report.append((restaurant["name"], saved, await review_topics.count_pending(restaurant["id"], version)))
+    return report
+
+
+async def _topics(settings: Settings, args: argparse.Namespace) -> None:
+    """Kommandoen `topics`."""
+    if not settings.anthropic_api_key:
+        raise CliError("ANTHROPIC_API_KEY mangler i .env.")
+    if settings.ai_paused:
+        raise CliError("AI_PAUSED=1 er sat, så Claude må ikke bruges lige nu.")
+    restaurant_id = UUID(args.restaurant_id) if args.restaurant_id else None
+    async with (
+        anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=60.0, max_retries=2) as client,
+        httpx.AsyncClient(timeout=httpx.Timeout(15.0, connect=5.0), follow_redirects=False) as http,
+    ):
+        report = await tag_topics(settings, client=client, http=http, restaurant_id=restaurant_id)
+    for name, saved, pending in report:
+        note = f"   ({pending} mangler stadig, se loggen og 'usage')" if pending else ""
+        print(f"  {name[:40]:40} {saved:>5} mærket{note}")
+
+
 def _caps_line(name: str, used: dict[str, int], caps) -> str:
     """Én linje med forbrug i forhold til lofterne for hele Stamgæst."""
     return (
@@ -344,7 +404,8 @@ async def _usage(settings: Settings, args: argparse.Namespace) -> None:
     def dollars(row: dict) -> float:
         tokens_in = row["input_tokens"] + row["profile_input_tokens"]
         tokens_out = row["output_tokens"] + row["profile_output_tokens"]
-        return (tokens_in * price_in + tokens_out * price_out) / 1_000_000
+        topics = row["topics_input_tokens"] * TOPICS_PRICE_INPUT_PER_MTOK + row["topics_output_tokens"] * TOPICS_PRICE_OUTPUT_PER_MTOK
+        return (tokens_in * price_in + tokens_out * price_out + topics) / 1_000_000
 
     if settings.ai_paused:
         print("BEMÆRK: AI_PAUSED=1 er sat, så udkast er slået fra for ALLE.\n")
@@ -353,27 +414,32 @@ async def _usage(settings: Settings, args: argparse.Namespace) -> None:
     print(_caps_line("Udkast fra Claude", await usage.current(usage.DRAFT), settings.draft_caps))
     print(_caps_line("Hentninger fra Google", await usage.current(usage.FETCH), settings.fetch_caps))
     print(_caps_line("Profiler fra hjemmesider", await usage.current(usage.PROFILE), settings.profile_caps))
+    print(_caps_line("Mærkning med emner", await usage.current(usage.TOPICS), settings.topics_caps))
 
     print(f"\nPr. café, de sidste {args.days} dage")
     if not rows:
         print("  Intet forbrug endnu.")
         return
-    print(f"  {'Café':30} {'Udkast':>7} {'Tokens ind':>11} {'Tokens ud':>10} {'Anslået':>9} {'Hentninger':>11} {'Profiler':>9}")
+    print(f"  {'Café':30} {'Udkast':>7} {'Tokens ind':>11} {'Tokens ud':>10} {'Anslået':>9} {'Hentninger':>11} {'Profiler':>9} {'Emner':>6}")
     for row in rows:
         flag = "" if row["ai_enabled"] in (True, None) else "   [udkast slået fra]"
         print(
             f"  {row['restaurant_name'][:30]:30} {row['drafts']:>7} {row['input_tokens']:>11} "
-            f"{row['output_tokens']:>10} {'$' + format(dollars(row), '.2f'):>9} {row['fetches']:>11} {row['profiles']:>9}{flag}"
+            f"{row['output_tokens']:>10} {'$' + format(dollars(row), '.2f'):>9} {row['fetches']:>11} {row['profiles']:>9} {row['topics']:>6}{flag}"
         )
-    keys = ("drafts", "input_tokens", "output_tokens", "fetches", "profiles", "profile_input_tokens", "profile_output_tokens")
+    keys = (
+        "drafts", "input_tokens", "output_tokens", "fetches", "profiles", "profile_input_tokens",
+        "profile_output_tokens", "topics", "topics_input_tokens", "topics_output_tokens",
+    )
     total = {key: sum(row[key] for row in rows) for key in keys}
     print(
         f"  {'I alt':30} {total['drafts']:>7} {total['input_tokens']:>11} {total['output_tokens']:>10} "
-        f"{'$' + format(dollars(total), '.2f'):>9} {total['fetches']:>11} {total['profiles']:>9}"
+        f"{'$' + format(dollars(total), '.2f'):>9} {total['fetches']:>11} {total['profiles']:>9} {total['topics']:>6}"
     )
     print(
-        f"\nTokens-kolonnerne er udkast. Beløbet er Claude i alt (udkast og profiler), anslået ud fra {price_in:g}/{price_out:g} USD pr. million tokens ind/ud "
-        "(CLAUDE_PRICE_*_PER_MTOK i .env). Den rigtige regning står i Anthropic Console. "
+        f"\nTokens-kolonnerne er udkast. Beløbet er Claude i alt (udkast, profiler og emner), anslået ud fra {price_in:g}/{price_out:g} USD pr. million tokens ind/ud "
+        f"(CLAUDE_PRICE_*_PER_MTOK i .env) og {TOPICS_PRICE_INPUT_PER_MTOK:g}/{TOPICS_PRICE_OUTPUT_PER_MTOK:g} for emnerne. "
+        "Emner er antal kald (hvert mærker op til 10 anmeldelser). Den rigtige regning står i Anthropic Console. "
         "Google-prisen står i Google Cloud Console."
     )
 
@@ -470,6 +536,9 @@ def _parser() -> argparse.ArgumentParser:
         command = commands.add_parser(name, help=text)
         command.add_argument("--restaurant-id", required=True, help="caféens id (fra 'list-restaurants')")
 
+    topics = commands.add_parser("topics", help="mærk anmeldelser med emner til statistikken nu (koster lidt)")
+    topics.add_argument("--restaurant-id", help="kun én café (fra 'list-restaurants'). Standard er alle")
+
     stats = commands.add_parser("stats", help="hvor meget retter kunderne i Claudes udkast?")
     stats.add_argument("--days", type=int, help="kun svar sendt de sidste N dage (fx for at sammenligne før/efter en ny prompt)")
     stats.add_argument("--restaurant-id", help="kun én café (fra 'list-restaurants')")
@@ -507,6 +576,8 @@ async def _run(args: argparse.Namespace, settings: Settings) -> None:
             await _stats(args)
         elif args.command == "usage":
             await _usage(settings, args)
+        elif args.command == "topics":
+            await _topics(settings, args)
         elif args.command in ("ai-off", "ai-on"):
             await set_ai_enabled(UUID(args.restaurant_id), args.command == "ai-on")
             state = "slået TIL" if args.command == "ai-on" else "slået FRA"

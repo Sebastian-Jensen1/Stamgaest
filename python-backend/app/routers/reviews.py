@@ -5,19 +5,23 @@ Alle endpoints kræver login (`user: CurrentUser`). Hvilken café det gælder, k
 en café, og et anmeldelses-id fra en anden café giver "findes ikke" (404).
 """
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
+import anthropic
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 
 from app.core.config import Settings
-from app.core.deps import CurrentUser, get_http, get_places_key, get_settings
+from app.core.deps import CurrentUser, get_claude_optional, get_http, get_places_key, get_settings
 from app.core.errors import ApiError
 from app.core.rate_limit import describe_wait
 from app.models import replies, restaurants, reviews, usage, users
 from app.schemas.reviews import DashboardResponse, OkResponse, SendReplyRequest
-from app.services import places_service, usage_service
+from app.services import places_service, topics_service, usage_service
+
+logger = logging.getLogger("review_assistant")
 
 router = APIRouter()
 
@@ -84,7 +88,9 @@ async def my_reviews(user: CurrentUser):
 @router.post("/reviews/refresh", response_model=DashboardResponse)
 async def refresh_reviews(
     user: CurrentUser,
+    background: BackgroundTasks,
     api_key: str = Depends(get_places_key),
+    claude: anthropic.AsyncAnthropic | None = Depends(get_claude_optional),
     http: httpx.AsyncClient = Depends(get_http),
     settings: Settings = Depends(get_settings),
 ):
@@ -140,6 +146,15 @@ async def refresh_reviews(
     last_visit = await users.start_or_continue_visit(user["user_id"], VISIT_PAUSE_MINUTES)
     rows = await reviews.list_by_restaurant(restaurant["id"])
     fresh = await _own_restaurant(user)
+
+    # Nye anmeldelser mærkes med emner til statistikken. Det sker i baggrunden efter svaret, så
+    # kunden ikke venter på det, og en fejl dér aldrig ødelægger selve hentningen.
+    try:
+        await topics_service.start_if_needed(
+            background, client=claude, settings=settings, http=http, restaurant=fresh, user_id=user["user_id"],
+        )
+    except Exception:  # noqa: BLE001 - hentningen er lykkedes, og det er den kunden venter på
+        logger.exception("Emner: kunne ikke starte mærkningen efter en hentning")
     return _dashboard(fresh, rows, last_visit)
 
 

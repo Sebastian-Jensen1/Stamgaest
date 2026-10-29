@@ -293,3 +293,59 @@ def test_changing_email_only_ever_touches_your_own_account(client, two_cafes):
     assert rows[a["user_id"]] == "ny-a@test.dk"
     assert rows[b["user_id"]] == "b@test.dk"
     assert client.get("/api/auth/me").json()["email"] == "b@test.dk"
+
+
+# ---- statistik og emner -------------------------------------------------------------
+
+
+def test_stats_only_count_your_own_reviews_and_topics(client, two_cafes):
+    a, b, a_reviews, b_reviews = two_cafes
+    # Begge caféer har to anmeldelser, og begge er mærket (efter hentningen i two_cafes).
+    assert db_rows(client, "SELECT count(*) FROM review_topics") == [(4,)]
+    as_user(client, b)
+    client.post(f"/api/reviews/{b_reviews[0]['id']}/answered", json={})
+
+    as_user(client, a)
+    data = client.get("/api/stats?restaurantId=" + str(b["restaurant_id"])).json()
+    assert data["businessName"] == "Café A"
+    assert data["reviewCount"] == 2 and data["answeredCount"] == 0
+    assert sum(m["count"] for m in data["months"]) == 2
+    assert {t["key"]: t["total"] for t in data["topics"]}["drikke"] == 1  # ikke 2
+    assert data["analyzedCount"] == 2
+
+
+def test_starting_the_tagging_never_touches_another_cafe(client, two_cafes):
+    a, b, _, _ = two_cafes
+    db_execute(client, "DELETE FROM review_topics")  # testschemaet: begge caféer mangler nu emner
+    b_calls_before = db_rows(
+        client, "SELECT count(*) FROM usage_events WHERE kind = 'claude_topics' AND restaurant_id = %s", (b["restaurant_id"],)
+    )
+    as_user(client, a)
+    claude = use_claude(client, FakeClaude())
+
+    assert client.post("/api/stats/topics", json={"restaurantId": str(b["restaurant_id"])}).json() == {"analyzing": True}
+
+    content = claude.topic_calls[0]["messages"][0]["content"]
+    assert content.count("<anmeldelse ") == 2  # kun A's to
+    assert db_rows(client, "SELECT restaurant_id, count(*) FROM review_topics GROUP BY restaurant_id") == [
+        (a["restaurant_id"], 2)
+    ]
+    b_calls_after = db_rows(
+        client, "SELECT count(*) FROM usage_events WHERE kind = 'claude_topics' AND restaurant_id = %s", (b["restaurant_id"],)
+    )
+    assert b_calls_after == b_calls_before  # intet nyt forbrug på B's regning
+
+
+def test_topics_can_never_be_saved_on_another_cafes_review(client, two_cafes):
+    a, b, _, b_reviews = two_cafes
+    from app.models import review_topics
+
+    db_execute(client, "DELETE FROM review_topics")
+
+    async def save_on_b():
+        await review_topics.save_many(
+            a["restaurant_id"], [(b_reviews[0]["id"], "x", {"mad": "negativ"})], version=1, model="m"
+        )
+
+    client.portal.call(save_on_b)
+    assert db_rows(client, "SELECT count(*) FROM review_topics") == [(0,)]

@@ -109,3 +109,30 @@ async def set_reviews_fetched_at(restaurant_id: UUID, value: datetime | None) ->
         "UPDATE restaurants SET reviews_fetched_at = %s WHERE id = %s RETURNING id",
         (value, restaurant_id),
     )
+
+
+async def claim_topics(restaurant_id: UUID, stale_minutes: int) -> bool:
+    """Reserverer retten til at mærke caféens anmeldelser nu. False hvis en mærkning allerede kører.
+
+    Tjek og reservation sker i ÉN forespørgsel, så to samtidige hentninger ikke begge starter
+    en mærkning og betaler to gange. Er en mærkning gået i stå (fx ved en genstart midt i), må
+    en ny starte efter `stale_minutes`.
+    """
+    row = await fetch_one(
+        """
+        UPDATE restaurants SET topics_started_at = now()
+         WHERE id = %s
+           AND (topics_started_at IS NULL
+                OR topics_started_at <= now() - make_interval(mins => %s))
+        RETURNING id
+        """,
+        (restaurant_id, stale_minutes),
+    )
+    return row is not None
+
+
+async def release_topics(restaurant_id: UUID) -> None:
+    """Noterer at mærkningen for caféen er færdig, så en ny kan startes."""
+    await fetch_all(
+        "UPDATE restaurants SET topics_started_at = NULL WHERE id = %s RETURNING id", (restaurant_id,)
+    )

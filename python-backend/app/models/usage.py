@@ -13,6 +13,7 @@ from app.db.pool import fetch_all, fetch_one, transaction
 DRAFT = "claude_draft"
 FETCH = "places_fetch"
 PROFILE = "claude_profile"
+TOPICS = "claude_topics"
 
 # Rækkefølgen bruges, når der skal vælges hvilket loft der blev ramt først.
 SCOPES = ("cafe_day", "cafe_month", "all_day", "all_month")
@@ -146,7 +147,10 @@ async def summary(days: int) -> list[dict]:
                count(*) FILTER (WHERE e.kind = 'places_fetch') AS fetches,
                count(*) FILTER (WHERE e.kind = 'claude_profile') AS profiles,
                coalesce(sum(e.input_tokens) FILTER (WHERE e.kind = 'claude_profile'), 0) AS profile_input_tokens,
-               coalesce(sum(e.output_tokens) FILTER (WHERE e.kind = 'claude_profile'), 0) AS profile_output_tokens
+               coalesce(sum(e.output_tokens) FILTER (WHERE e.kind = 'claude_profile'), 0) AS profile_output_tokens,
+               count(*) FILTER (WHERE e.kind = 'claude_topics') AS topics,
+               coalesce(sum(e.input_tokens) FILTER (WHERE e.kind = 'claude_topics'), 0) AS topics_input_tokens,
+               coalesce(sum(e.output_tokens) FILTER (WHERE e.kind = 'claude_topics'), 0) AS topics_output_tokens
           FROM usage_events e
           LEFT JOIN restaurants r ON r.id = e.restaurant_id
          WHERE e.status <> 'skipped' AND e.created_at >= now() - make_interval(days => %s)

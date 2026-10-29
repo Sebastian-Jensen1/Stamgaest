@@ -143,3 +143,75 @@ async def mark_answered(review_id: UUID, restaurant_id: UUID) -> dict | None:
         """,
         (review_id, restaurant_id),
     )
+
+
+async def rating_summary(restaurant_id: UUID) -> dict:
+    """Tal for caféens anmeldelser hos os: antal, stjernefordeling og hvor mange der er besvaret."""
+    return await fetch_one(
+        """
+        SELECT count(*)                                   AS total,
+               avg(rating)                                AS average,
+               count(*) FILTER (WHERE rating = 1)         AS stars_1,
+               count(*) FILTER (WHERE rating = 2)         AS stars_2,
+               count(*) FILTER (WHERE rating = 3)         AS stars_3,
+               count(*) FILTER (WHERE rating = 4)         AS stars_4,
+               count(*) FILTER (WHERE rating = 5)         AS stars_5,
+               count(*) FILTER (WHERE status = 'answered') AS answered
+          FROM reviews
+         WHERE restaurant_id = %s
+        """,
+        (restaurant_id,),
+    )
+
+
+async def response_hours(restaurant_id: UUID, first_import_at) -> dict:
+    """Median-tid fra en anmeldelse kom ind hos os, til den blev besvaret, i timer.
+
+    Kun anmeldelser der kom ind EFTER caféens import tæller. Dem caféen havde i forvejen, kan være
+    flere år gamle, og ville gøre tallet meningsløst. Vi regner fra hvornår vi fik den (created_at),
+    for det er først der, ejeren kan svare gennem os.
+    """
+    if first_import_at is None:
+        return {"median": None, "sample": 0}
+    return await fetch_one(
+        """
+        SELECT percentile_cont(0.5) WITHIN GROUP (
+                 ORDER BY extract(epoch FROM answered_at - created_at) / 3600
+               ) AS median,
+               count(*) AS sample
+          FROM reviews
+         WHERE restaurant_id = %s AND status = 'answered' AND answered_at IS NOT NULL
+           AND created_at > %s
+        """,
+        (restaurant_id, first_import_at),
+    )
+
+
+async def monthly(restaurant_id: UUID, months: int) -> list[dict]:
+    """Antal anmeldelser og gennemsnit pr. måned (efter hvornår de blev skrevet), de seneste `months` måneder.
+
+    Måneder uden anmeldelser kommer med (antal 0), så en graf ikke springer dem over. Måneder
+    regnes i dansk tid.
+    """
+    return await fetch_all(
+        """
+        WITH months AS (
+          SELECT generate_series(
+                   date_trunc('month', now() AT TIME ZONE 'Europe/Copenhagen') - make_interval(months => %s::int - 1),
+                   date_trunc('month', now() AT TIME ZONE 'Europe/Copenhagen'),
+                   interval '1 month'
+                 ) AS month
+        )
+        SELECT to_char(m.month, 'YYYY-MM') AS month,
+               count(rv.id)                AS count,
+               avg(rv.rating)              AS average
+          FROM months m
+          LEFT JOIN reviews rv
+            ON rv.restaurant_id = %s
+           AND rv.rating IS NOT NULL
+           AND date_trunc('month', rv.published_at AT TIME ZONE 'Europe/Copenhagen') = m.month
+         GROUP BY m.month
+         ORDER BY m.month
+        """,
+        (months, restaurant_id),
+    )
