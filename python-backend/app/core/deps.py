@@ -40,6 +40,14 @@ def get_claude(request: Request) -> anthropic.AsyncAnthropic:
     return client
 
 
+def get_claude_optional(request: Request) -> anthropic.AsyncAnthropic | None:
+    """Giver klienten til Claude, eller None hvis ANTHROPIC_API_KEY mangler.
+
+    Til steder hvor Claude er en ekstra (fx mærkning med emner), og resten skal virke uden.
+    """
+    return request.app.state.anthropic
+
+
 def get_places_key(settings: Settings = Depends(get_settings)) -> str:
     """Giver Google-nøglen. Fejler med en tydelig besked hvis GOOGLE_PLACES_API_KEY mangler."""
     if not settings.google_places_api_key:

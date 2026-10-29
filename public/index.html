@@ -272,6 +272,43 @@
     padding: 16px 0; margin-top: 48px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
   }
   .sv-savebar .sv-msg { flex: 1; min-width: 200px; }
+
+  /* ---- Statistiksiden: samme designfil og tokens som indstillingssiden (.sv) ----------------
+     Søjlerne er ren HTML og CSS. Moss = positiv, Ash = blandet, og negativ er Coral Whisper med
+     en Ember Coral-kant: designfilen tillader kun koral som streg, aldrig som fyld. */
+  .st-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 24px; }
+  .st-num {
+    font-family: var(--font-gt-alpina-condensed); font-weight: 700; font-size: 38px; line-height: 1.08;
+    color: var(--color-true-black); margin: 0 0 8px;
+  }
+  .st-label { font-size: 14px; line-height: 1.43; margin: 0; }
+  .st-bars { display: grid; gap: 8px; }
+  .st-bar-row { display: grid; grid-template-columns: 48px 1fr 48px; gap: 16px; align-items: center; font-size: 14px; line-height: 1.43; }
+  .st-bar-row .st-n { text-align: right; color: var(--color-midnight-ink); }
+  .st-track { display: flex; height: 16px; background: var(--color-cream-paper); border-radius: var(--radius-pills); overflow: hidden; }
+  .st-fill { height: 100%; background: var(--color-moss); }
+  .st-fill.mixed { background: var(--color-ash); }
+  .st-fill.neg { background: var(--color-coral-whisper); box-shadow: inset 0 0 0 1.5px var(--color-ember-coral); }
+  .st-cols { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; align-items: end; }
+  .st-col { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 14px; line-height: 1.43; min-width: 0; }
+  .st-col-avg { color: var(--color-midnight-ink); font-weight: 700; min-height: 20px; }
+  .st-col-area { width: 100%; height: 120px; display: flex; align-items: flex-end; justify-content: center; }
+  .st-col-bar { width: 100%; max-width: 32px; background: var(--color-moss); border-radius: var(--radius-cards) var(--radius-cards) 0 0; }
+  .st-col-bar.st-zero { background: var(--color-fog); height: 2px; border-radius: 0; }
+  .st-col-month { color: var(--color-slate); }
+  .st-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; line-height: 1.43; margin: 16px 0 0; }
+  .st-legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .st-dot { width: 16px; height: 16px; border-radius: var(--radius-pills); display: inline-block; }
+  .st-topics { display: grid; gap: 16px; }
+  .st-topic-head { display: flex; justify-content: space-between; gap: 16px; font-size: 14px; line-height: 1.43; margin-bottom: 8px; }
+  .st-topic-head strong { color: var(--color-midnight-ink); font-family: var(--font-gt-america-extended); }
+  .st-status { font-size: 14px; line-height: 1.43; margin: 0 0 24px; }
+  .st-note { font-size: 14px; line-height: 1.43; margin: 16px 0 0; }
+  @media (max-width: 520px) {
+    .st-cols { gap: 4px; }
+    .st-col { font-size: 10px; }
+    .st-bar-row { grid-template-columns: 40px 1fr 40px; gap: 8px; }
+  }
 </style>
 </head>
 <body>
@@ -336,6 +373,7 @@
       <h1 id="cafeName">Stamgæst</h1>
       <div class="who">
         <span id="userEmail"></span>
+        <button class="linkbtn" id="statsBtn" type="button">Statistik</button>
         <button class="linkbtn" id="settingsBtn" type="button">Indstillinger for svar</button>
         <button class="linkbtn" id="logoutBtn" type="button">Log ud</button>
       </div>
@@ -517,6 +555,58 @@
   </form>
 </div>
 
+<!-- Statistik (egen side, følger DESIGN_savvycal.md ligesom indstillingerne) -->
+<div id="statsView" class="sv" hidden>
+  <div class="sv-wrap">
+    <div class="sv-top">
+      <button class="sv-ghost sv-small" id="stBack" type="button">← Til anmeldelserne</button>
+      <span class="sv-cafe" id="stCafe"></span>
+    </div>
+
+    <p class="sv-eyebrow">Statistik</p>
+    <h1 class="sv-title">Hvad gæsterne siger</h1>
+    <p class="sv-lead" id="stLead">Tal og emner ud fra jeres anmeldelser.</p>
+    <p class="sv-msg err" id="stMessage" role="alert" hidden></p>
+
+    <section class="sv-card" aria-labelledby="stOverviewTitle">
+      <h2 id="stOverviewTitle">Overblik</h2>
+      <p>Googles egen score er den, gæsterne ser. Resten er regnet ud fra de anmeldelser, vi har hentet.</p>
+      <div class="st-grid">
+        <div><p class="st-num" id="stGoogle">–</p><p class="st-label" id="stGoogleLabel">Score på Google</p></div>
+        <div><p class="st-num" id="stCount">0</p><p class="st-label">Anmeldelser hentet</p></div>
+        <div><p class="st-num" id="stAnswered">–</p><p class="st-label" id="stAnsweredLabel">Besvaret</p></div>
+        <div><p class="st-num" id="stResponse">–</p><p class="st-label" id="stResponseLabel">Typisk svartid</p></div>
+      </div>
+    </section>
+
+    <section class="sv-card" aria-labelledby="stTopicsTitle">
+      <h2 id="stTopicsTitle">Emner</h2>
+      <p>Hvad anmeldelserne handler om, og om gæsterne er glade for det. Claude læser hver anmeldelse én gang.</p>
+      <p class="st-status" id="stTopicStatus" role="status"></p>
+      <div class="st-topics" id="stTopics"></div>
+      <p class="st-note" id="stTopicsEmpty" hidden></p>
+      <div class="st-legend" id="stTopicsLegend">
+        <span><i class="st-dot st-fill"></i>Positiv</span>
+        <span><i class="st-dot st-fill mixed"></i>Blandet</span>
+        <span><i class="st-dot st-fill neg"></i>Negativ</span>
+      </div>
+    </section>
+
+    <section class="sv-card" aria-labelledby="stStarsTitle">
+      <h2 id="stStarsTitle">Stjerner</h2>
+      <p>Fordelingen i de anmeldelser, vi har hentet.</p>
+      <div class="st-bars" id="stStars"></div>
+    </section>
+
+    <section class="sv-card" aria-labelledby="stMonthsTitle">
+      <h2 id="stMonthsTitle">Udvikling over tid</h2>
+      <p>Antal anmeldelser pr. måned, efter hvornår de blev skrevet. Tallet over søjlen er månedens gennemsnit.</p>
+      <div class="st-cols" id="stMonths"></div>
+      <p class="st-note" id="stMonthsNote"></p>
+    </section>
+  </div>
+</div>
+
 <script>
   let reviews = [];
   let currentFilter = "all";
@@ -580,6 +670,7 @@
     $("forgotView").hidden = true;
     $("resetView").hidden = true;
     clearSettings();
+    clearStats();
     $("emailMessage").textContent = "";
     $("emailPanel").open = false;
     $("loginView").hidden = false;
@@ -593,6 +684,7 @@
     $("forgotView").hidden = true;
     $("resetView").hidden = true;
     $("settingsView").hidden = true;
+    $("statsView").hidden = true;
     $("appView").hidden = false;
     $("cafeName").textContent = me.businessName || "Stamgæst";
     $("userEmail").textContent = me.email;
@@ -1182,6 +1274,199 @@
 
   $("settingsBtn").addEventListener("click", showSettings);
   $("svBack").addEventListener("click", leaveSettings);
+
+  // ---- Statistik ----------------------------------------------------------------
+  // Alt sættes ind med textContent og createElement, aldrig som rå HTML.
+
+  const MONTH_NAMES = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+  // Så tit siden spørger igen, mens Claude mærker anmeldelser med emner.
+  const STATS_POLL_MS = 4000;
+  let statsPoll = null;
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function fmt(n, digits = 1) {
+    return Number(n).toLocaleString("da-DK", { minimumFractionDigits: 0, maximumFractionDigits: digits });
+  }
+
+  function plural(n, one, many) {
+    return `${fmt(n, 0)} ${n === 1 ? one : many}`;
+  }
+
+  function formatHours(hours) {
+    if (hours < 1) return "under 1 time";
+    if (hours < 48) return plural(Math.round(hours), "time", "timer");
+    return plural(Math.round(hours / 24), "dag", "dage");
+  }
+
+  function stMessage(text) {
+    $("stMessage").textContent = text || "";
+    $("stMessage").hidden = !text;
+  }
+
+  function barRow(label, parts, max, count) {
+    const row = el("div", "st-bar-row");
+    row.append(el("span", "", label));
+    const track = el("div", "st-track");
+    for (const [n, cls] of parts) {
+      if (!n || !max) continue;
+      const fill = el("div", "st-fill" + (cls ? " " + cls : ""));
+      fill.style.width = (n / max * 100) + "%";
+      track.append(fill);
+    }
+    row.append(track, el("span", "st-n", fmt(count, 0)));
+    return row;
+  }
+
+  function renderOverview(data) {
+    $("stGoogle").textContent = data.googleRating != null ? fmt(data.googleRating) : "–";
+    $("stGoogleLabel").textContent = data.googleRatingCount != null
+      ? `Score på Google (${plural(data.googleRatingCount, "anmeldelse", "anmeldelser")})`
+      : "Score på Google";
+    $("stCount").textContent = fmt(data.reviewCount, 0);
+    $("stAnswered").textContent = data.reviewCount ? `${fmt(data.answeredCount, 0)} af ${fmt(data.reviewCount, 0)}` : "–";
+    $("stResponse").textContent = data.medianResponseHours != null ? formatHours(data.medianResponseHours) : "–";
+    $("stResponseLabel").textContent = data.responseSample
+      ? `Typisk svartid (ud fra ${plural(data.responseSample, "svar", "svar")})`
+      : "Typisk svartid (når I har svaret på nye anmeldelser)";
+    $("stLead").textContent = data.reviewCount
+      ? `Ud fra ${plural(data.reviewCount, "anmeldelse", "anmeldelser")}, vi har hentet. Google sender i dag kun 5 ad gangen, så tallene bliver bedre, jo længere I har brugt Stamgæst.`
+      : "Der er ingen anmeldelser endnu. Hent dem på forsiden.";
+  }
+
+  function renderStars(data) {
+    const max = Math.max(...data.stars, 0);
+    const rows = [];
+    for (let star = 5; star >= 1; star--) {
+      const n = data.stars[star - 1];
+      rows.push(barRow(`${star} ★`, [[n, ""]], max, n));
+    }
+    $("stStars").replaceChildren(...rows);
+  }
+
+  function renderMonths(data) {
+    const max = Math.max(...data.months.map(m => m.count), 0);
+    const cols = data.months.map(m => {
+      const col = el("div", "st-col");
+      col.append(el("span", "st-col-avg", m.averageRating != null ? fmt(m.averageRating) : ""));
+      const area = el("div", "st-col-area");
+      const bar = el("div", "st-col-bar" + (m.count ? "" : " st-zero"));
+      if (m.count) bar.style.height = Math.max(4, m.count / max * 100) + "%";
+      bar.title = `${plural(m.count, "anmeldelse", "anmeldelser")}`;
+      area.append(bar);
+      col.append(area, el("span", "", fmt(m.count, 0)), el("span", "st-col-month", MONTH_NAMES[Number(m.month.slice(5, 7)) - 1]));
+      return col;
+    });
+    $("stMonths").replaceChildren(...cols);
+    const enough = data.months.some(m => m.averageRating != null);
+    $("stMonthsNote").textContent = enough
+      ? `Gennemsnittet vises kun for måneder med mindst ${data.minReviewsPerMonth} anmeldelser.`
+      : `For få anmeldelser endnu til at vise en udvikling i stjernerne. Et gennemsnit kræver mindst ${data.minReviewsPerMonth} anmeldelser i samme måned.`;
+  }
+
+  function renderTopics(data) {
+    const status = $("stTopicStatus");
+    if (data.topicsStatus === "analyzing") {
+      status.textContent = `Claude læser ${plural(data.pendingCount, "anmeldelse", "anmeldelser")}. Siden opdaterer sig selv.`;
+    } else if (data.pendingCount && data.topicsStatus === "paused") {
+      status.textContent = `${plural(data.pendingCount, "anmeldelse mangler", "anmeldelser mangler")} emner, men det er slået fra lige nu.`;
+    } else if (data.pendingCount) {
+      status.textContent = `${plural(data.pendingCount, "anmeldelse mangler", "anmeldelser mangler")} emner. De kommer med senere.`;
+    } else if (data.analyzedCount) {
+      status.textContent = `Ud fra ${plural(data.analyzedCount, "anmeldelse", "anmeldelser")} med tekst.`;
+    } else {
+      status.textContent = "Ingen anmeldelser med tekst endnu.";
+    }
+
+    const mentioned = data.topics.filter(t => t.total > 0);
+    const silent = data.topics.filter(t => t.total === 0);
+    const max = Math.max(...mentioned.map(t => t.total), 0);
+    $("stTopics").replaceChildren(...mentioned.map(t => {
+      const item = el("div");
+      const head = el("div", "st-topic-head");
+      head.append(el("strong", "", t.label), el("span", "", `${plural(t.positive, "positiv", "positive")}, ${plural(t.negative, "negativ", "negative")}` + (t.mixed ? `, ${fmt(t.mixed, 0)} blandet` : "")));
+      const track = el("div", "st-track");
+      for (const [n, cls] of [[t.positive, ""], [t.mixed, "mixed"], [t.negative, "neg"]]) {
+        if (!n) continue;
+        const fill = el("div", "st-fill" + (cls ? " " + cls : ""));
+        fill.style.width = (n / max * 100) + "%";
+        track.append(fill);
+      }
+      item.append(head, track);
+      return item;
+    }));
+    $("stTopicsLegend").hidden = mentioned.length === 0;
+    const empty = $("stTopicsEmpty");
+    empty.hidden = silent.length === 0 || mentioned.length === 0;
+    empty.textContent = "Ikke nævnt endnu: " + silent.map(t => t.label).join(", ") + ".";
+  }
+
+  function renderStats(data) {
+    $("stCafe").textContent = data.businessName || "";
+    renderOverview(data);
+    renderTopics(data);
+    renderStars(data);
+    renderMonths(data);
+  }
+
+  function stopStatsPoll() {
+    if (statsPoll) clearTimeout(statsPoll);
+    statsPoll = null;
+  }
+
+  // Henter statistikken. Første gang siden åbnes, beder den også om at få mærket de anmeldelser,
+  // der mangler emner. Det sker kun én gang pr. besøg på siden, så et nået loft ikke giver
+  // kald igen og igen.
+  async function loadStats(askForTopics) {
+    stopStatsPoll();
+    try {
+      let data = await api("GET", "/api/stats");
+      if ($("statsView").hidden) return;
+      if (askForTopics && data.pendingCount && data.topicsStatus === "ready") {
+        const started = await api("POST", "/api/stats/topics");
+        if (started.analyzing) data = await api("GET", "/api/stats");
+      }
+      if ($("statsView").hidden) return;
+      renderStats(data);
+      if (data.topicsStatus === "analyzing") statsPoll = setTimeout(() => loadStats(false), STATS_POLL_MS);
+    } catch (err) {
+      stMessage(err.message);
+    }
+  }
+
+  function showStats() {
+    stMessage("");
+    $("stCafe").textContent = $("cafeName").textContent;
+    $("appView").hidden = true;
+    $("statsView").hidden = false;
+    $("statsView").scrollTop = 0;
+    loadStats(true);
+  }
+
+  function leaveStats() {
+    stopStatsPoll();
+    $("statsView").hidden = true;
+    $("appView").hidden = false;
+  }
+
+  // Ved log ud: fjern alt, så den næste bruger på samme computer ikke ser det.
+  function clearStats() {
+    stopStatsPoll();
+    for (const id of ["stTopics", "stStars", "stMonths"]) $(id).replaceChildren();
+    for (const id of ["stCafe", "stTopicStatus", "stMonthsNote", "stTopicsEmpty"]) $(id).textContent = "";
+    for (const id of ["stGoogle", "stAnswered", "stResponse"]) $(id).textContent = "–";
+    $("stCount").textContent = "0";
+    stMessage("");
+    $("statsView").hidden = true;
+  }
+
+  $("statsBtn").addEventListener("click", showStats);
+  $("stBack").addEventListener("click", leaveStats);
 
   // ---- Anmeldelser ------------------------------------------------------------
 

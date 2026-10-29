@@ -140,8 +140,9 @@ tilbage. Kan en kunde ikke få mail, kan `--show-password` vise en adgangskode �
 | `reset-password --email …` | Ny adgangskode, og kunden logges ud alle steder (glemt kode) |
 | `deactivate --email …` / `activate --email …` | Slår en kunde fra/til, og fra logger dem ud med det samme |
 | `usage [--days N]` | Forbrug af Claude og Google pr. café, anslået beløb, og hvor tæt vi er på lofterne |
-| `ai-off --restaurant-id …` / `ai-on --restaurant-id …` | Nødbremse: slår udkast fra Claude fra/til for én café med det samme |
+| `ai-off --restaurant-id …` / `ai-on --restaurant-id …` | Nødbremse: slår Claude fra/til for én café med det samme (udkast, profil og emner) |
 | `stats [--days N] [--restaurant-id …]` | Hvor meget kunderne retter i Claudes udkast før de sender, og de mest rettede eksempler. Kun til os |
+| `topics [--restaurant-id …]` | Mærker anmeldelser med emner til statistikken nu (alle caféer eller én). Koster lidt, lofterne gælder |
 
 ## "Nye siden sidst"
 
@@ -210,6 +211,56 @@ Det kalder Claude rigtigt (ca. 0,30 USD for hele sættet), så prisen vises, og 
 først. Resultatet er en HTML-side i `evals/out/` med svarene side om side. Mappen er i
 `.gitignore`, for den kan indeholde rigtige anmeldelser. Kør det, hver gang prompten ændres,
 og før en ny café går i gang.
+
+## Statistik
+
+Knappen "Statistik" øverst i dashboardet åbner en side for sig (samme design som indstillingerne,
+`DESIGN_savvycal.md`). Den viser:
+
+- **Overblik:** Googles egen score og antal (det gæsterne ser), antal anmeldelser vi har hentet,
+  hvor mange der er besvaret, og den typiske svartid.
+- **Emner:** hvad anmeldelserne handler om, og om gæsterne er glade for det (positiv, blandet, negativ).
+- **Stjerner:** fordelingen fra 1 til 5.
+- **Udvikling over tid:** antal anmeldelser pr. måned de sidste 12 måneder, efter hvornår de blev
+  skrevet. Gennemsnittet vises kun for måneder med mindst 3 anmeldelser, så ét enkelt 1-stjernet
+  ikke tegner et dramatisk fald.
+
+**Alt regnes ud fra de anmeldelser, vi har gemt**, ikke ud fra øjebliksbilleder. I dag er det kun få
+(Google sender 5 ad gangen), men når vi får alle anmeldelser via Business Profile API, virker den samme
+kode, og udviklingen kan regnes bagud i tiden fra dag ét. Svartiden tæller kun anmeldelser, der er kommet
+ind efter caféens første import, og regnes fra hvornår vi fik dem.
+
+### Emner med Claude
+
+Hver anmeldelse mærkes **én gang** af Claude (`claude-haiku-5-5`, kan ændres med `CLAUDE_TOPICS_MODEL`)
+med emner fra en **fast liste** og stemningen for hvert emne. Resultatet gemmes i tabellen `review_topics`,
+og statistikken er almindelig SQL.
+
+| Emne | Hvad det dækker |
+| --- | --- |
+| Mad | Retterne: smag, kvalitet, portioner og udvalg |
+| Kaffe og drikke | Kaffe, te, øl, vin, juice og andre drikke |
+| Service | Personalets venlighed og opmærksomhed (ikke hvor lang tid det tog) |
+| Ventetid | Hvor længe man ventede: i kø, på maden, på at betale |
+| Pris og værdi | Prisniveauet, og om det var pengene værd |
+| Stemning og indretning | Atmosfære, hygge, indretning, musik og lydniveau |
+| Renlighed | Om der var rent |
+| Plads og beliggenhed | At få et bord, trangt eller rummeligt, udeservering, beliggenhed og adgang |
+
+- **Hvorfor en fast liste:** med frie emner bliver "ventetid", "lang ventetid" og "langsom betjening" til
+  tre ting, der ikke kan tælles sammen. Listen og forklaringerne står ét sted: `TOPICS` i
+  `services/topics_service.py`. Ændres den, skal `TAXONOMY_VERSION` op, så anmeldelserne mærkes igen.
+- **Hvornår:** i baggrunden efter hver "Hent seneste anmeldelser", og når statistiksiden åbnes og nogle
+  mangler. Kun anmeldelser uden mærkning (eller hvis tekst er ændret) sendes til Claude. Anmeldelser med
+  kun stjerner koster intet.
+- **Pris:** 10 anmeldelser pr. kald, under en øre pr. kald. Egne lofter (`CAP_TOPICS_*`, pr. kald) og
+  de samme nødbremser som udkastene (`ai-off` og `AI_PAUSED=1`).
+- **Sikkerhed:** anmeldelserne står i tags som data, får korte id'er (1, 2, 3 ...) i stedet for vores
+  egne, og svaret skal passe til et fast skema. Ukendte emner og stemninger smides væk.
+- **De anmeldelser caféerne havde i forvejen** mærkes, første gang statistiksiden åbnes, eller med
+  `uv run python -m app.admin topics` (alle caféer, eller `--restaurant-id` for én).
+- **Senere, med alle anmeldelser:** den første store import kan mærkes via Anthropics Batch API til halv
+  pris, og emner kan vises over tid. Ingen af delene er bygget endnu.
 
 ## Database (PostgreSQL på Neon)
 
@@ -310,6 +361,7 @@ Nyttige kommandoer: `\dt` (vis tabeller), `\d reviews` (vis kolonner),
 5. Klik "Send til Google" — kopierer svaret til udklipsholderen og flytter anmeldelsen til "Besvarede"-fanen
 6. Har en anmeldelse allerede fået svar direkte på Google (fx før I brugte dette værktøj), sæt flueben ved den og klik "Markér som besvaret" for at flytte den til "Besvarede" uden at generere et nyt svar
 7. Udfyld "Indstillinger for svar", så udkastene lyder som jer (se "Svar skræddersyet til hver café")
+8. Klik "Statistik" for at se score, stjerner, udvikling og hvad gæsterne skriver om (se "Statistik")
 
 ## Tests
 
@@ -327,7 +379,8 @@ Der er to slags tests. Ingen af dem koster penge eller rører jeres rigtige data
 - **Med database** (`tests/test_*_db.py`): kundens hele flow (`test_api_db`), login og
   sessioner (`test_auth_db`), **at en kunde aldrig kan se eller ændre en anden kundes data**
   (`test_isolation_db`), admin-værktøjet (`test_admin_db`), glemt adgangskode, invitation og skift af e-mail (`test_email_change_db`),
-  lofterne for betalte kald (`test_usage_db`) og indstillinger for svar (`test_reply_settings_db`). De kører i et midlertidigt
+  lofterne for betalte kald (`test_usage_db`), indstillinger for svar (`test_reply_settings_db`) og
+  statistik og emner (`test_stats_db`). De kører i et midlertidigt
   schema med tilfældigt navn i Neon, som oprettes før og slettes efter. Google og Claude er
   falske. Mangler `DATABASE_URL`, springes de over.
 
@@ -465,23 +518,25 @@ se afsnittet ovenfor.
 
 ## Hjemmesiden (stamgaest.com)
 
-Mappen `stamgaest-website/` er den offentlige forside med privatlivspolitik. Den er ren HTML og CSS uden
-build-trin og er adskilt fra appen (`public/`), som er selve login og dashboard.
+Mappen `stamgaest-website/` er den offentlige forside med privatlivspolitik og brugsvilkår (dansk og
+engelsk). Den er ren HTML og CSS uden build-trin og er adskilt fra appen (`public/`), som er selve
+login og dashboard.
 
 Se den lokalt (fra projektets rod):
 
 ```
-python3 -m http.server 8000 --directory website
+python3 -m http.server 8000 --directory stamgaest-website
 ```
 
-Åbn derefter http://localhost:8000. Hostes på Cloudflare Pages med `website` som rodmappe og
+Åbn derefter http://localhost:8000. Hostes på Cloudflare Pages med `stamgaest-website` som rodmappe og
 ingen build-kommando.
 
 ## Filstruktur
 
 ```
 review-assistant/
-├── public/index.html            # Frontend (form + resultater), serveres af backenden
+├── public/index.html            # Dashboardet (login, anmeldelser, indstillinger), serveres af backenden
+├── stamgaest-website/           # Hjemmesiden stamgaest.com (statisk, uafhængig af backenden)
 └── python-backend/
     ├── pyproject.toml           # Afhængigheder (uv.lock låser præcise versioner)
     ├── .env.example             # Skabelon — kopiér til .env
@@ -490,14 +545,14 @@ review-assistant/
     │   ├── main.py              # Selve appen: samler routes, sikkerhed og opstart
     │   ├── __main__.py          # Startknap: uv run python -m app
     │   ├── admin.py             # Vores værktøj til at oprette kunder (uv run python -m app.admin)
-    │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate, reply_settings, health
+    │   ├── routers/             # HTTP-endpoints: auth (login), reviews, generate, reply_settings, stats, health
     │   ├── schemas/             # Tjekker og former data ind og ud
-    │   ├── services/            # Claude (udkast og profil fra hjemmeside), Google Places, mail, lofter og login
-    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens, usage, reply_settings)
+    │   ├── services/            # Claude (udkast, profil fra hjemmeside og emner), statistik, Google Places, mail, lofter og login
+    │   ├── models/              # Al SQL, én fil pr. tabel (restaurants, reviews, replies, users, sessions, password_tokens, email_changes, usage, reply_settings, review_topics)
     │   ├── db/
     │   │   ├── pool.py          # Forbindelsen til databasen
     │   │   ├── migrate.py       # Migrations-runner
-    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug), 006_reply_profiles.sql (indstillinger for svar), 009_email_changes.sql (skift e-mail)
+    │   │   └── migrations/      # 001_init.sql (data), 002_auth.sql (brugere og sessioner), 003_password_tokens.sql (glemt adgangskode), 004_invitations.sql (invitation af nye kunder), 005_usage.sql (lofter og forbrug), 006_reply_profiles.sql (indstillinger for svar), 007_reply_profile_v2.sql (ny indstillingsside), 008_reviews_seen.sql ("Nye siden sidst"), 009_email_changes.sql (skift e-mail), 010_review_topics.sql (emner til statistikken)
     │   └── core/                # Indstillinger, fejl, sikkerhed, grænser og "hvem er logget ind"
     ├── evals/                   # Testsæt: sammenlign udkast side om side (uv run python -m evals.compare)
     └── tests/                   # uv run pytest
@@ -532,3 +587,5 @@ ved serveren ud fra login, og den kan aldrig angives i kaldet.
 | `POST` | `/api/reply-settings/profile` | Starter "Lav forslag fra jeres hjemmeside" i baggrunden (svarer 202 med det samme). |
 | `DELETE` | `/api/reply-settings/suggestion` | Kasserer Claudes forslag til fakta om stedet. |
 | `POST` | `/api/generate/preview` | "Prøv et udkast": ét udkast med indstillingerne fra siden (også ugemte). Gemmes ikke. |
+| `GET` | `/api/stats` | Statistik for din café: score, stjerner, måneder, emner og hvor langt mærkningen er. Kalder hverken Google eller Claude. |
+| `POST` | `/api/stats/topics` | Mærker de anmeldelser, der mangler emner, i baggrunden. Svarer `{"analyzing": true/false}`. |

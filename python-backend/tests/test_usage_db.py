@@ -104,7 +104,7 @@ def test_google_fetches_are_logged_too(client):
     caps(client)
     use_services(client)
     setup_cafe(client)
-    assert db_rows(client, "SELECT kind, status FROM usage_events") == [("places_fetch", "done")]
+    assert db_rows(client, "SELECT kind, status FROM usage_events WHERE kind = 'places_fetch'") == [("places_fetch", "done")]
 
 
 # ---- lofter for udkast -----------------------------------------------------------

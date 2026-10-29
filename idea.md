@@ -68,9 +68,11 @@
     bruges til tonen.
 - [ ] **#8 Auto-hent nye anmeldelser** med et baggrundsjob i stedet for kun ved oprettelse.
   - Kræver #16 (serveren skal køre hele tiden). Hver hentning koster et Places-kald pr. café.
-- [ ] **#9 Statistik**: gennemsnit over tid, hyppige emner ("ventetid", "kaffe"), stemning.
+- [x] **#9 Statistik**: gennemsnit over tid, hyppige emner ("ventetid", "kaffe"), stemning.
   Claude kan trække temaer ud.
-- [ ] **#10 Flersproget**: svar på anmeldelsens eget sprog (turister på engelsk/tysk).
+  - Lavet: egen side med score, stjerner, måneder og emner (se README "Statistik"). Claude mærker hver
+    anmeldelse én gang med en fast emneliste, så det holder, når vi får alle anmeldelser med #7.
+  - Senere: emner over tid, klik på et emne for at se anmeldelserne, og Batch API til den store import.
 
 ## Drift og forretning
 

@@ -132,6 +132,9 @@ def clean_tables(request):
         conn.execute("TRUNCATE restaurants, reviews, replies, users, sessions, usage_events, usage_alerts CASCADE")
     test_client.cookies.clear()
     test_client.app.state.limits.reset_all()
+    # En ny falsk Claude til hver test. Hentninger fra Google starter mærkning med emner i
+    # baggrunden, og den må aldrig ramme den rigtige Claude.
+    test_client.app.state.anthropic = FakeClaude()
     yield
 
 
@@ -253,18 +256,56 @@ def google_ok(place: dict = PLACE):
     return lambda request: httpx.Response(200, json=place)
 
 
-class FakeClaude:
-    """En falsk Claude. Gemmer hvilke kald den fik, og svarer med "Udkast nr. 1", "Udkast nr. 2" osv."""
+def fake_topics(review_text: str) -> list[dict]:
+    """De emner den falske Claude finder i en tekst: "kaffe" er positiv om drikke, "service" er negativ."""
+    text = review_text.lower()
+    found = []
+    if "kaffe" in text:
+        found.append({"topic": "drikke", "sentiment": "positiv"})
+    if "service" in text:
+        found.append({"topic": "service", "sentiment": "negativ"})
+    return found
 
-    def __init__(self, fail_on_call: int | None = None):
+
+class FakeClaude:
+    """En falsk Claude. Gemmer hvilke kald den fik, og svarer med "Udkast nr. 1", "Udkast nr. 2" osv.
+
+    Mærkning med emner (til statistikken) gemmes for sig i `topic_calls`, så test af udkast ikke
+    skal tage højde for den. `topics_fail=True` lader mærkningen fejle.
+    """
+
+    def __init__(self, fail_on_call: int | None = None, topics_fail: bool = False):
         self.calls: list[dict] = []
+        self.topic_calls: list[dict] = []
         self.fail_on_call = fail_on_call  # fx 2 = lad kald nummer 2 fejle
+        self.topics_fail = topics_fail
         self.messages = self  # så koden kan skrive client.messages.create(...)
+
+    def _topics(self, kwargs):
+        """Svarer på en mærkning: finder <anmeldelse id="n" ...>tekst</anmeldelse> og giver emner tilbage."""
+        import json
+        import re
+
+        from app.core.errors import UpstreamError
+
+        self.topic_calls.append(kwargs)
+        if self.topics_fail:
+            raise UpstreamError("Claude fejlede (test).")
+        found = re.findall(r'<anmeldelse id="(\d+)"[^>]*>(.*?)</anmeldelse>', kwargs["messages"][0]["content"], re.S)
+        body = {"reviews": [{"id": i, "topics": fake_topics(text)} for i, text in found]}
+        return SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=json.dumps(body))],
+            stop_reason="end_turn",
+            usage=SimpleNamespace(input_tokens=300, output_tokens=40),
+        )
 
     async def create(self, **kwargs):
         """Ligner Claudes messages.create(), men svarer med et fast udkast (eller fejler)."""
         from app.core.errors import UpstreamError
+        from app.services import topics_service
 
+        if kwargs.get("system") == topics_service._system_prompt():
+            return self._topics(kwargs)
         self.calls.append(kwargs)
         if self.fail_on_call == len(self.calls):
             raise UpstreamError("Claude fejlede (test).")
